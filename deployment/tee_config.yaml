@@ -1,0 +1,68 @@
+# Trusted Execution Environment Configuration for ev0x
+
+# Hardware Configuration
+hardware:
+  # Supported CPU types for confidential computing
+  supported_cpus:
+    - name: "Intel TDX"
+      enabled: true
+      version: "1.0+"
+    - name: "AMD SEV"
+      enabled: true
+      version: "SNP"
+  
+  # Machine specifications
+  machine:
+    type: "n2d-standard-2"
+    memory: "8GB"
+    vcpus: 2
+  
+  # Optional GPU acceleration
+  gpu:
+    enabled: false  # Set to true when needed
+    type: "NVIDIA H100"
+    memory: "80GB"
+    count: 1
+
+# Attestation Configuration
+attestation:
+  method: "vTPM"
+  requirements:
+    enforce_measurement: true
+    enforce_firmware_version: true
+    pcr_values:
+      - pcr: 0
+        value: "measurement_of_firmware"
+      - pcr: 7
+        value: "measurement_of_secure_boot_policy"
+  verification_interval_minutes: 30
+
+# Runtime Security Configuration
+security:
+  memory_encryption: true
+  secure_key_management: true
+  debug_mode: false
+  runtime_encryption: true
+  integrity_monitoring: true
+
+# Smart Contract Integration
+smart_contract:
+  enabled: true
+  interfaces:
+    - name: "TeeV1Verifier"
+      version: "1.0"
+      chain: "Flare"
+    - name: "TeeV1Interface"
+      version: "1.0"
+      chain: "Flare"
+  attestation_report_endpoints:
+    - "https://attestation.flare.network/verify"
+    - "https://backup-attestation.flare.network/verify"
+
+# Environment Configuration
+environment:
+  confidential_space: true
+  container_registry: "gcr.io/ev0x-project"
+  build_validation: true
+  log_encryption: true
+
