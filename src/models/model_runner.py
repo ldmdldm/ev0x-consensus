@@ -134,55 +134,127 @@ class ModelRunner:
         results = await asyncio.gather(*tasks)
         return {result["model_id"]: result for result in results}
 
-async def run_models_batch(self, 
+    async def run_models_batch(self, 
                         batch_inputs: List[Any], 
                         model_ids: Optional[List[str]] = None,
                         timeout: float = 30.0) -> List[Dict[str, Any]]:
-    """
-    Run models on a batch of inputs in parallel.
-    
-    Args:
-        batch_inputs: List of inputs to be processed
-        model_ids: List of model IDs to run (runs all registered models if None)
-        timeout: Maximum execution time per model in seconds
+        """
+        Run models on a batch of inputs in parallel.
         
-    Returns:
-        List of dictionaries mapping model IDs to their outputs, one per input
-    """
-    if model_ids is None:
-        model_ids = list(self.models.keys())
-        
-    # Create tasks for all inputs and all models
-    batch_tasks = []
-    for input_data in batch_inputs:
-        batch_tasks.append(self.run_models(input_data, model_ids, timeout))
-        
-    # Run all tasks concurrently
-    return await asyncio.gather(*batch_tasks)
+        Args:
+            batch_inputs: List of inputs to be processed
+            model_ids: List of model IDs to run (runs all registered models if None)
+            timeout: Maximum execution time per model in seconds
+            
+        Returns:
+            List of dictionaries mapping model IDs to their outputs, one per input
+        """
+        if model_ids is None:
+            model_ids = list(self.models.keys())
+            
+        # Create tasks for all inputs and all models
+        batch_tasks = []
+        for input_data in batch_inputs:
+            batch_tasks.append(self.run_models(input_data, model_ids, timeout))
+            
+        # Run all tasks concurrently
+        return await asyncio.gather(*batch_tasks)
 
-def get_available_models(self) -> List[str]:
-    """
-    Get a list of all available model IDs.
-    
-    Returns:
-        List of registered model IDs
-    """
-    return list(self.models.keys())
+    def get_available_models(self) -> List[str]:
+        """
+        Get a list of all available model IDs.
+        
+        Returns:
+            List of registered model IDs
+        """
+        return list(self.models.keys())
 
-def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Get information about a specific model.
-    
-    Args:
-        model_id: ID of the model
+    def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get information about a specific model.
         
-    Returns:
-        Dictionary with model information or None if model not found
-    """
-    if model_id not in self.models:
-        return None
+        Args:
+            model_id: ID of the model
+            
+        Returns:
+            Dictionary with model information or None if model not found
+        """
+        if model_id not in self.models:
+            return None
+            
+        return {
+            "model_id": model_id,
+            "config": self.models[model_id]["config"]
+        }
         
-    return {
-        "model_id": model_id,
-        "config": self.models[model_id]["config"]
-    }
+    async def update_models(self, model_updates: Dict[str, Any]) -> None:
+        """
+        Update models based on evolutionary selection.
+        
+        Args:
+            model_updates: Dictionary containing model updates
+        """
+        logger.info(f"Updating models with evolutionary selection: {list(model_updates.keys())}")
+        
+        for model_id, update in model_updates.items():
+            if model_id in self.models:
+                # Apply updates to existing model
+                if "config" in update:
+                    self.models[model_id]["config"].update(update["config"])
+                logger.info(f"Updated model {model_id} configuration")
+            elif "function" in update:
+                # Register new model
+                self.register_model(model_id, update["function"], **(update.get("config", {})))
+                logger.info(f"Added new model {model_id}")
+        
+        # Remove models marked for removal
+        for model_id in model_updates.get("remove", []):
+            if model_id in self.models:
+                del self.models[model_id]
+                logger.info(f"Removed model {model_id}")
+                
+    async def fine_tune(self, training_data: Dict[str, Any]) -> None:
+        """
+        Fine-tune models with generated training data.
+        
+        Args:
+            training_data: Dictionary containing training data and configuration
+        """
+        logger.info("Starting fine-tuning process with generated data")
+        
+        tasks = []
+        
+        # Get models to be fine-tuned
+        model_ids = training_data.get("model_ids", list(self.models.keys()))
+        
+        for model_id in model_ids:
+            if model_id not in self.models:
+                logger.warning(f"Cannot fine-tune unknown model {model_id}")
+                continue
+                
+            model_fn = self.models[model_id]["function"]
+            
+            # Check if model has a fine-tune method
+            if hasattr(model_fn, "fine_tune") and callable(getattr(model_fn, "fine_tune")):
+                logger.info(f"Fine-tuning model {model_id}")
+                
+                # Get model-specific training data
+                model_data = training_data.get("data", {}).get(model_id, training_data.get("data", {}))
+                
+                # Create fine-tuning task
+                task = asyncio.create_task(
+                    model_fn.fine_tune(
+                        model_data,
+                        **training_data.get("config", {})
+                    )
+                )
+                tasks.append(task)
+            else:
+                logger.warning(f"Model {model_id} does not support fine-tuning")
+                
+        if tasks:
+            # Wait for all fine-tuning tasks to complete
+            await asyncio.gather(*tasks)
+            logger.info("Fine-tuning completed")
+        else:
+            logger.warning("No models were eligible for fine-tuning")

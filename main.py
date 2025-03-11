@@ -35,7 +35,22 @@ class EvolutionaryConsensusSystem:
     def __init__(self):
         """Initialize the evolutionary consensus system components."""
         # Initialize core components
-        self.model_runner = ModelRunner(models=AVAILABLE_MODELS)
+        self.model_runner = ModelRunner()
+        
+        # Register each available model
+        for model_config in AVAILABLE_MODELS:
+            model_id = model_config.name  # Use name as the model ID
+            model_function = self._create_model_function(model_config)
+            
+            # Extract parameters from ModelConfig
+            params = model_config.parameters if model_config.parameters else {}
+            
+            # Register the model with the runner
+            self.model_runner.register_model(
+                model_id,
+                model_function,
+                **params
+            )
         self.consensus = ConsensusSynthesizer()
         self.rewards = ShapleyCalculator()
         self.metrics = PerformanceTracker()
@@ -50,13 +65,116 @@ class EvolutionaryConsensusSystem:
         
         # Initialize data and API components
         self.data_loader = DatasetLoader()
-        self.api_server = APIServer(self)
+        self.api_server = APIServer(None)  # Pass None or a default config path instead of self
         
         # System state
         self.current_generation = 0
         self.performance_history = {}
         
         logger.info("Evolutionary Consensus System initialized")
+    
+    def _create_model_function(self, model_config):
+        """
+        Create a callable model function from a ModelConfig object.
+        
+        Args:
+            model_config: A ModelConfig object containing model information
+            
+        Returns:
+            An async callable function that processes input data
+        """
+        import os
+        import httpx
+        import json
+        
+        async def model_function(input_data, **kwargs):
+            """
+            Process input data using the configured model.
+            
+            Args:
+                input_data: Input text or data to process
+                **kwargs: Additional parameters to override defaults
+                
+            Returns:
+                Processed output from the model
+            """
+            # Get API key from environment variable
+            api_key = os.environ.get(model_config.api_key_env_var)
+            if not api_key:
+                raise ValueError(f"API key not found in environment variable {model_config.api_key_env_var}")
+            
+            # Merge default parameters with any overrides
+            params = {**(model_config.parameters or {}), **kwargs}
+            
+            # Prepare headers
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+            
+            # Prepare request data based on provider and model type
+            if model_config.provider == "gemini" and model_config.model_type == "llm":
+                # Handle Gemini LLM models (text generation)
+                request_data = {
+                    "contents": [{"role": "user", "parts": [{"text": input_data}]}],
+                    **params
+                }
+            elif model_config.provider == "openrouter" and model_config.model_type == "llm":
+                # Handle OpenRouter LLM models (using OpenAI-compatible format)
+                request_data = {
+                    "messages": [{"role": "user", "content": input_data}],
+                    **params
+                }
+            elif model_config.model_type == "embedding":
+                # Handle embedding models
+                request_data = {
+                    "text": input_data,
+                    **params
+                }
+            else:
+                # Generic fallback
+                request_data = {
+                    "input": input_data,
+                    **params
+                }
+            
+            # Make API request
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    model_config.endpoint,
+                    headers=headers,
+                    json=request_data,
+                    timeout=30.0
+                )
+                
+                # Process the response
+                if response.status_code == 200:
+                    response_data = response.json()
+                    
+                    # Format the response based on the provider
+                    if model_config.provider == "openrouter":
+                        # Extract content from OpenRouter response format
+                        try:
+                            if "choices" in response_data and len(response_data["choices"]) > 0:
+                                if "message" in response_data["choices"][0]:
+                                    content = response_data["choices"][0]["message"]["content"]
+                                    # Restructure to a standardized format for ev0x
+                                    return {
+                                        "candidates": [{"content": {"parts": [{"text": content}]}}],
+                                        "original_response": response_data
+                                    }
+                            # If extraction fails, return the full response
+                            return response_data
+                        except Exception as e:
+                            logger.warning(f"Error extracting content from OpenRouter response: {e}")
+                            return response_data
+                    else:
+                        # Return the original response for other providers
+                        return response_data
+                else:
+                    raise Exception(f"API request failed with status {response.status_code}: {response.text}")
+        
+        return model_function
         
     async def process_query(self, query: str) -> Dict[str, Any]:
         """
@@ -134,7 +252,7 @@ class EvolutionaryConsensusSystem:
         logger.info("Starting ev0x system")
         
         # Start the API server
-        self.api_server.start()
+        self.api_server.start_server()
         
         # Schedule regular system evolution
         asyncio.create_task(self._schedule_evolution())

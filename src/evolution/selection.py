@@ -2,7 +2,7 @@
 
 import logging
 import numpy as np
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional, Union
 from dataclasses import dataclass
 import time
 
@@ -124,10 +124,13 @@ class AdaptiveModelSelector:
         
         logger.debug(f"Updated performance metrics for model {model_id}")
     
-    def select_models(self) -> List[str]:
+    def select_models(self, input_data: Any = None) -> List[str]:
         """
         Select the best performing models based on current metrics.
         
+        Args:
+            input_data: Optional input data that might be used for model selection (not used currently)
+            
         Returns:
             List of selected model IDs
         """
@@ -218,4 +221,87 @@ class AdaptiveModelSelector:
         rankings.sort(key=lambda x: x["composite_score"], reverse=True)
         
         return rankings
+
+class ModelSelector:
+    """
+    Wrapper around AdaptiveModelSelector to provide a standardized interface for model selection.
+    
+    This class serves as a facade for the AdaptiveModelSelector, providing a simpler interface
+    that abstracts the underlying complexity while maintaining the adaptive selection capabilities.
+    """
+    
+    def __init__(self, config_path: Optional[str] = None):
+        """
+        Initialize the ModelSelector with an AdaptiveModelSelector.
+        
+        Args:
+            config_path: Optional path to configuration file
+        """
+        self.adaptive_selector = AdaptiveModelSelector(config_path)
+        logger.info("Initialized ModelSelector wrapping AdaptiveModelSelector")
+    
+    def select(self, performance_data: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
+        """
+        Select models based on performance data.
+        
+        Args:
+            performance_data: Dictionary mapping model IDs to their performance metrics
+                             Example format: 
+                             {
+                                "model1": {"accuracy": 0.85, "confidence": 0.9, ...},
+                                "model2": {"accuracy": 0.78, "confidence": 0.85, ...},
+                             }
+        
+        Returns:
+            Dictionary containing model updates, rankings, and other selection information
+        """
+        # Update performance data for all models
+        for model_id, metrics in performance_data.items():
+            self.adaptive_selector.update_performance(model_id, metrics)
+        
+        # Select the best models
+        selected_model_ids = self.adaptive_selector.select_models()
+        
+        # Get detailed rankings for all models
+        rankings = self.adaptive_selector.get_model_rankings()
+        
+        # Prepare the response with model updates
+        model_updates = {
+            "selected_models": selected_model_ids,
+            "rankings": rankings,
+            "active_count": len(selected_model_ids),
+            "total_models": len(performance_data),
+            "timestamp": time.time()
+        }
+        
+        logger.info(f"Selected {len(selected_model_ids)} models out of {len(performance_data)} total models")
+        return model_updates
+    
+    def get_active_models(self) -> List[str]:
+        """
+        Get the currently active models.
+        
+        Returns:
+            List of active model IDs
+        """
+        return self.adaptive_selector.active_models
+    
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get the current configuration.
+        
+        Returns:
+            Current configuration dictionary
+        """
+        return self.adaptive_selector.config
+    
+    def update_config(self, new_config: Dict[str, Any]) -> None:
+        """
+        Update the configuration.
+        
+        Args:
+            new_config: New configuration values to update
+        """
+        self.adaptive_selector.config.update(new_config)
+        logger.info("Updated ModelSelector configuration")
 

@@ -168,10 +168,16 @@ class ConsensusSynthesizer:
     """
     Takes multiple model outputs and generates a consensus result with confidence scores.
     Capable of handling different types of outputs and analyzing disagreements.
+    Supports iterative feedback loop for consensus refinement and factual verification.
     """
     
-    def __init__(self):
-        """Initialize the ConsensusSynthesizer with default parameters."""
+    def __init__(self, config_path=None):
+        """
+        Initialize the ConsensusSynthesizer with parameters from configuration.
+        
+        Args:
+            config_path: Path to the configuration file (defaults to input.json)
+        """
         self.strategies = {
             "text_consensus": self._text_consensus,
             "structured_consensus": self._structured_consensus,
@@ -180,6 +186,37 @@ class ConsensusSynthesizer:
         }
         self.history = []
         self.confidence_threshold = 0.7
+        self.iteration_history = []
+        
+        # Load configuration
+        self.config = self._load_configuration(config_path or "input.json")
+        
+        # Set up configuration parameters
+        if self.config:
+            self.max_iterations = self.config.get("iterations", {}).get("max_iterations", 3)
+            self.improvement_threshold = self.config.get("iterations", {}).get("improvement_threshold", 0.05)
+            self.feedback_prompt = self.config.get("iterations", {}).get("feedback_prompt", "")
+            self.models = self.config.get("models", [])
+            self.aggregator_config = self.config.get("aggregator", {})
+            self.citation_verification = self.config.get("citation_verification", {"enabled": False})
+        else:
+            # Default values if no configuration is found
+            self.max_iterations = 3
+            self.improvement_threshold = 0.05
+            self.feedback_prompt = ""
+            self.models = []
+            self.aggregator_config = {}
+            self.citation_verification = {"enabled": False}
+        
+        # Initialize factual verification if enabled
+        if self.citation_verification.get("enabled", False):
+            try:
+                from src.factual.citation import CitationVerifier
+                self.citation_verifier = CitationVerifier()
+            except ImportError:
+                import logging
+                logging.warning("Citation verification enabled but CitationVerifier could not be imported")
+                self.citation_verification["enabled"] = False
         
     def synthesize(self, model_outputs: Dict[str, Dict[str, Any]], 
                 output_type: str = None) -> Dict[str, Any]:
@@ -517,3 +554,254 @@ class ConsensusSynthesizer:
     def get_history(self) -> List[Dict[str, Any]]:
         """Retrieve the history of consensus operations."""
         return self.history
+
+    def _load_configuration(self, config_path: str) -> Dict[str, Any]:
+        """
+        Load configuration from the specified JSON file.
+        
+        Args:
+            config_path: Path to the configuration file
+            
+        Returns:
+            Dictionary containing configuration parameters
+        """
+        import os
+        import json
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        try:
+            if not os.path.exists(config_path):
+                # Try relative to project root
+                alt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), config_path)
+                if os.path.exists(alt_path):
+                    config_path = alt_path
+                else:
+                    logger.warning(f"Configuration file not found at {config_path}")
+                    return {}
+            
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                logger.info(f"Loaded configuration from {config_path}")
+                return config
+        except Exception as e:
+            logger.error(f"Error loading configuration from {config_path}: {str(e)}")
+            return {}
+    
+    async def synthesize_with_iterations(self, query: str, model_outputs: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Generate a consensus result from multiple model outputs with iterative refinement.
+        
+        Args:
+            query: The original query or prompt
+            model_outputs: Dictionary mapping model IDs to their outputs
+            
+        Returns:
+            Dictionary containing the final consensus result and metadata
+        """
+        import logging
+        import time
+        from copy import deepcopy
+        
+        logger = logging.getLogger(__name__)
+        
+        # Initialize iteration tracking
+        self.iteration_history = []
+        iterations_performed = 0
+        previous_score = 0
+        best_result = None
+        
+        # Get initial consensus
+        start_time = time.time()
+        initial_consensus = self.synthesize(model_outputs)
+        
+        # Store initial result
+        self.iteration_history.append({
+            "iteration": 0,
+            "consensus": deepcopy(initial_consensus),
+            "model_outputs": deepcopy(model_outputs),
+            "improvement": 0,
+            "feedback": None
+        })
+        
+        best_result = initial_consensus
+        previous_score = self._evaluate_consensus_quality(initial_consensus)
+        
+        logger.info(f"Initial consensus quality score: {previous_score:.4f}")
+        
+        # Perform iterative improvement if configured
+        if self.max_iterations > 1:
+            aggregator_model_id = self.aggregator_config.get("model_id", "")
+            
+            # Get the aggregator model configuration
+            aggregator_params = self.aggregator_config.get("parameters", {})
+            
+            for iteration in range(1, self.max_iterations):
+                try:
+                    # Generate feedback on the current consensus
+                    feedback = self._generate_feedback(query, best_result, model_outputs)
+                    
+                    # Skip if no meaningful feedback was generated
+                    if not feedback or feedback.strip() == "":
+                        logger.info(f"No meaningful feedback generated for iteration {iteration}, stopping")
+                        break
+                    
+                    # Create a new prompt that includes feedback
+                    feedback_points = feedback.strip()
+                    improvement_prompt = self.feedback_prompt.format(feedback_points=feedback_points)
+                    
+                    # Build a new set of model outputs that includes the refinement prompt
+                    refined_outputs = self._get_refinement_outputs(
+                        query, 
+                        best_result, 
+                        improvement_prompt,
+                        aggregator_model_id, 
+                        aggregator_params
+                    )
+                    
+                    # Synthesize a new consensus
+                    new_consensus = self.synthesize(refined_outputs)
+                    
+                    # Evaluate the new consensus
+                    new_score = self._evaluate_consensus_quality(new_consensus)
+                    improvement = new_score - previous_score
+                    
+                    logger.info(f"Iteration {iteration} - New score: {new_score:.4f}, Improvement: {improvement:.4f}")
+                    
+                    # Store this iteration
+                    self.iteration_history.append({
+                        "iteration": iteration,
+                        "consensus": deepcopy(new_consensus),
+                        "model_outputs": deepcopy(refined_outputs),
+                        "improvement": improvement,
+                        "feedback": feedback
+                    })
+                    
+                    # Update tracking variables
+                    iterations_performed += 1
+                    
+                    # Check if we've made enough improvement to continue
+                    if improvement > self.improvement_threshold:
+                        best_result = new_consensus
+                        previous_score = new_score
+                    else:
+                        logger.info(f"Improvement below threshold ({improvement:.4f} < {self.improvement_threshold}), stopping")
+                        break
+                        
+                except Exception as e:
+                    logger.error(f"Error in iteration {iteration}: {str(e)}")
+                    break
+        
+        # Verify factual claims if enabled
+        if self.citation_verification.get("enabled", False) and hasattr(self, "citation_verifier"):
+            try:
+                consensus_text = best_result.get("consensus", "")
+                if isinstance(consensus_text, str) and consensus_text.strip():
+                    verification_results = self.citation_verifier.verify_text(consensus_text)
+                    
+                    # Add factual verification results
+                    best_result["factual_verification"] = {
+                        "verified_claims": verification_results.get("verified_claims", 0),
+                        "total_claims": verification_results.get("total_claims", 0),
+                        "verification_rate": verification_results.get("verification_rate", 0),
+                        "claim_results": verification_results.get("claim_results", [])
+                    }
+                    
+                    # Add citations to the result
+                    if self.citation_verification.get("extract_quotes", False):
+                        best_result["citations"] = self._extract_citations_from_results(verification_results)
+            except Exception as e:
+                logger.error(f"Error during factual verification: {str(e)}")
+        
+        # Add metadata to the result
+        elapsed_time = time.time() - start_time
+        best_result["metadata"] = {
+            "iterations_performed": iterations_performed,
+            "final_quality_score": previous_score,
+            "processing_time_seconds": elapsed_time,
+            "improvement_from_initial": previous_score - self._evaluate_consensus_quality(initial_consensus) if iterations_performed > 0 else 0
+        }
+        
+        return best_result
+    
+    def _generate_feedback(self, query: str, consensus_result: Dict[str, Any], model_outputs: Dict[str, Dict[str, Any]]) -> str:
+        """
+        Generate feedback for improving the current consensus.
+        
+        Args:
+            query: The original query
+            consensus_result: The current consensus result
+            model_outputs: The original model outputs
+            
+        Returns:
+            String containing feedback points for improvement
+        """
+        import logging
+        import re
+        
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Use the aggregator model to generate feedback
+            aggregator_model_id = self.aggregator_config.get("model_id", "")
+            if not aggregator_model_id:
+                logger.warning("No aggregator model configured for feedback generation")
+                return ""
+                
+            # Extract consensus text
+            consensus_text = consensus_result.get("consensus", "")
+            if not isinstance(consensus_text, str) or not consensus_text.strip():
+                logger.warning("Empty consensus text, cannot generate feedback")
+                return ""
+            
+            # Construct the feedback prompt
+            feedback_prompt = """
+            You are tasked with analyzing a consensus answer derived from multiple AI model responses.
+            Identify 3-5 specific ways this consensus answer could be improved:
+            
+            Original Question:
+            {query}
+            
+            Current Consensus Answer:
+            {consensus}
+            
+            Analyze this consensus answer and identify areas for improvement such as:
+            1. Missing important information that was present in some model responses
+            2. Logical inconsistencies or contradictions
+            3. Factual errors or misleading statements
+            4. Unclear explanations that need more detail
+            5. Important nuances or caveats that were omitted
+            
+            Return ONLY a numbered list of specific improvement points, without any introduction or conclusion.
+            Be concise and direct in your feedback.
+            """.strip().format(query=query, consensus=consensus_text)
+            
+            # Import here to avoid circular imports
+            from src.router.openrouter import OpenRouterClient
+            
+            # Initialize OpenRouter client
+            router_client = OpenRouterClient()
+            
+            # Generate feedback
+            response = router_client.generate(
+                model=aggregator_model_id,
+                prompt=feedback_prompt,
+                max_tokens=1024,
+                temperature=0.7
+            )
+            
+            # Extract the feedback text
+            feedback_text = response.get("text", "").strip()
+            
+            # Clean up the feedback to ensure it's in the right format
+            # Remove any introduction or conclusion paragraphs
+            numbered_points = re.findall(r'\d+\.\s+[^\n]+', feedback_text)
+            if numbered_points:
+                cleaned_feedback = "\n".join(numbered_points)
+                return cleaned_feedback
+            else:
+                return feedback_text
+                
+        except Exception as e:
+            logger.error(f"Error generating feedback

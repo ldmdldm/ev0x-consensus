@@ -349,3 +349,36 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Google Cloud for Confidential Computing infrastructure
 - Flare Network for blockchain integration capabilities
 - The open source community for various tools and libraries
+
+## New Features for Flare AI Hackathon
+
+We've enhanced the ev0x system with additional features to improve AI consensus quality and reliability:
+
+### 1. Factual Correctness with Citations/Sources
+
+The system now automatically verifies factual claims in model outputs and adds citations from trusted sources to enhance transparency and reliability. This feature:
+
+- Analyzes model responses to identify factual claims
+- Verifies claims against trusted sources
+- Inserts citations into the text with references
+- Calculates a confidence score for the verification
+
+Example usage:
+
+```python
+from src.evolution.meta_intelligence import add_citations_to_output
+
+# Enhance model output with citations
+verified_output = await add_citations_to_output(model_response, domain="scientific")
+
+# Access the verified output
+print(verified_output.verified_output)  # Text with citations added
+print(verified_output.citations)  # List of Citation objects
+print(verified_output.overall_confidence)  # Confidence score
+```
+
+You can run the citation example script to see this feature in action:
+
+```
+python examples/citation_example.py
+```

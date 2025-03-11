@@ -34,15 +34,15 @@ duckdb==0.9.1
 cryptography==41.0.5
 pyjwt==2.8.0
 # The following TEE-specific packages are for production deployment in secure environments
-pyTPM==0.15.0
-pal-tee==0.2.0
-attestation==0.3.0
+# pyTPM==0.7.1  # Updated to existing version or commented out
+# pal-tee==0.2.0  # Commented out as it may not be publicly available
+# attestation==0.3.0  # Commented out as it may not be publicly available
 google-cloud-confidentialcomputing==0.4.0
 grpcio==1.59.3
 protobuf==4.24.4
 
 # Async Processing
-asyncio==3.4.3
+# asyncio==3.4.3  # Removed as it's part of the Python standard library
 aiohttp==3.8.6
 celery==5.3.4
 redis==5.0.1
@@ -86,4 +86,4 @@ kubernetes==28.1.0
 google-cloud-container==2.36.0
 google-cloud-storage==2.13.0
 google-api-python-client==2.108.0
-terraform-python==0.1.5
+# terraform-python==0.1.5  # Commented out as it doesn't exist in PyPI

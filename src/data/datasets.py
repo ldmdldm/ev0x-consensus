@@ -290,3 +290,74 @@ class GitHubDataset(BaseDataset):
         except Exception as e:
             logger.error(f"Error fetching GitHub metadata: {e}")
             return {"error": str(e)}
+
+
+class DatasetLoader:
+    """
+    Wrapper around DatasetManager to provide the interface expected by main.py.
+    This class maintains API compatibility while delegating functionality to DatasetManager.
+    """
+    
+    def __init__(self):
+        """Initialize DatasetLoader with a DatasetManager instance."""
+        self.manager = DatasetManager()
+        
+    def get_dataset(self, dataset_name: str) -> Optional[BaseDataset]:
+        """
+        Get a dataset by name.
+        
+        Args:
+            dataset_name: Name of the dataset to retrieve
+            
+        Returns:
+            Dataset instance or None if not found
+        """
+        return self.manager.get_dataset(dataset_name)
+    
+    def list_datasets(self) -> List[str]:
+        """
+        List all available datasets.
+        
+        Returns:
+            List of dataset names
+        """
+        return self.manager.list_datasets()
+    
+    def get_metadata_for_all(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get metadata for all datasets.
+        
+        Returns:
+            Dictionary mapping dataset names to their metadata
+        """
+        return self.manager.get_metadata_for_all()
+    
+    def query_across_datasets(self, query_func) -> Dict[str, pd.DataFrame]:
+        """
+        Execute a query function across all datasets.
+        
+        Args:
+            query_func: Function that takes a dataset and returns a DataFrame
+            
+        Returns:
+            Dictionary mapping dataset names to query results
+        """
+        return self.manager.query_across_datasets(query_func)
+    
+    def load_dataset(self, dataset_name: str, **kwargs) -> pd.DataFrame:
+        """
+        Load data from a specific dataset with optional parameters.
+        This method provides a simplified interface for accessing dataset data.
+        
+        Args:
+            dataset_name: Name of the dataset to load
+            **kwargs: Additional parameters to pass to the dataset's get_data method
+            
+        Returns:
+            Pandas DataFrame with the dataset contents or empty DataFrame if dataset not found
+        """
+        dataset = self.get_dataset(dataset_name)
+        if dataset:
+            return dataset.get_data(**kwargs)
+        logger.error(f"Dataset {dataset_name} not found when attempting to load data")
+        return pd.DataFrame()

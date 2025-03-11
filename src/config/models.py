@@ -14,6 +14,7 @@ class ModelType(Enum):
 class ModelProvider(Enum):
     """AI model providers supported by ev0x."""
     GEMINI = "gemini"
+    OPENROUTER = "openrouter"
     CUSTOM = "custom"
 
 @dataclass
@@ -44,56 +45,84 @@ class ModelConfig:
 # Default model configurations
 DEFAULT_MODELS = [
     ModelConfig(
-        name="gemini-1.5-flash",
+        name="gpt-4",
         model_type=ModelType.LLM,
-        provider=ModelProvider.GEMINI,
-        version="1.5-flash",
-        endpoint="https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-        api_key_env_var="GEMINI_API_KEY",
-        capabilities=["text_generation", "chat", "reasoning"],
-        parameters={
-            "temperature": 0.7,
-            "max_output_tokens": 2048,
-            "top_p": 0.95,
-            "top_k": 40
-        }
-    ),
-    ModelConfig(
-        name="gemini-1.5-pro",
-        model_type=ModelType.LLM,
-        provider=ModelProvider.GEMINI,
-        version="1.5-pro",
-        endpoint="https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
-        api_key_env_var="GEMINI_API_KEY",
+        provider=ModelProvider.OPENROUTER,
+        version="gpt-4",
+        endpoint="https://openrouter.ai/api/v1/chat/completions",
+        api_key_env_var="OPEN_ROUTER_API_KEY",
         capabilities=["text_generation", "chat", "reasoning", "code_generation"],
         parameters={
             "temperature": 0.7,
-            "max_output_tokens": 4096,
+            "max_tokens": 4096,
             "top_p": 0.95,
-            "top_k": 40
+            "model": "gpt-4"
         }
     ),
     ModelConfig(
-        name="text-embedding-004",
-        model_type=ModelType.EMBEDDING,
-        provider=ModelProvider.GEMINI,
-        version="004",
-        endpoint="https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedText",
-        api_key_env_var="GEMINI_API_KEY",
-        capabilities=["text_embedding"],
-        parameters={}
+        name="claude-3-opus",
+        model_type=ModelType.LLM,
+        provider=ModelProvider.OPENROUTER,
+        version="claude-3-opus",
+        endpoint="https://openrouter.ai/api/v1/chat/completions",
+        api_key_env_var="OPEN_ROUTER_API_KEY",
+        capabilities=["text_generation", "chat", "reasoning", "code_generation"],
+        parameters={
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.95,
+            "model": "anthropic/claude-3-opus"
+        }
     ),
     ModelConfig(
-        name="aqa",
-        model_type=ModelType.AQA,
-        provider=ModelProvider.GEMINI,
-        version="1.0",
-        endpoint="https://generativelanguage.googleapis.com/v1beta/models/aqa",
-        api_key_env_var="GEMINI_API_KEY",
-        capabilities=["attributed_qa"],
-        parameters={}
+        name="claude-3-sonnet",
+        model_type=ModelType.LLM,
+        provider=ModelProvider.OPENROUTER,
+        version="claude-3-sonnet",
+        endpoint="https://openrouter.ai/api/v1/chat/completions",
+        api_key_env_var="OPEN_ROUTER_API_KEY",
+        capabilities=["text_generation", "chat", "reasoning"],
+        parameters={
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.95,
+            "model": "anthropic/claude-3-sonnet"
+        }
+    ),
+    ModelConfig(
+        name="llama-3-70b",
+        model_type=ModelType.LLM,
+        provider=ModelProvider.OPENROUTER,
+        version="llama-3-70b",
+        endpoint="https://openrouter.ai/api/v1/chat/completions",
+        api_key_env_var="OPEN_ROUTER_API_KEY",
+        capabilities=["text_generation", "chat", "reasoning"],
+        parameters={
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.95,
+            "model": "meta-llama/llama-3-70b-instruct"
+        }
+    ),
+    ModelConfig(
+        name="gemini-pro",
+        model_type=ModelType.LLM,
+        provider=ModelProvider.OPENROUTER,
+        version="gemini-pro",
+        endpoint="https://openrouter.ai/api/v1/chat/completions",
+        api_key_env_var="OPEN_ROUTER_API_KEY",
+        capabilities=["text_generation", "chat", "reasoning"],
+        parameters={
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.95,
+            "model": "google/gemini-pro"
+        }
     )
 ]
+
+# Alias for DEFAULT_MODELS to maintain compatibility with imports in main.py
+AVAILABLE_MODELS = DEFAULT_MODELS
 
 def get_model_config(model_name: str) -> Optional[ModelConfig]:
     """Get configuration for a specific model by name."""
