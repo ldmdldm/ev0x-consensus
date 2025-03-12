@@ -12,10 +12,52 @@ env:
   GCR_REGISTRY: gcr.io
   PROJECT_ID: verifiable-ai-hackathon
   IMAGE_NAME: ev0x-consensus
+  STAGING_VM_NAME: ev0x-staging
+  PRODUCTION_VM_NAME: ev0x-production
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov flake8 mypy bandit
+          
+      - name: Type check with mypy
+        run: |
+          mypy src
+          
+      - name: Security check with bandit
+        run: |
+          bandit -r src -f json -o bandit-report.json
+          
+      - name: Run tests with pytest
+        run: |
+          pytest tests/ --cov=src --cov-report=xml
+          
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: coverage.xml
+
   build:
     name: Build and Push Container
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,10 +86,65 @@ jobs:
 
       - name: Build and Push Docker image
         run: |
-          docker build -t ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker build -t ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} -t ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest .
           docker push ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Save image reference for deployment
         id: set-image-url
         run: |
           echo "image_url=${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        
+      - name: Deploy to Confidential VM in Staging
+        run: |
+          # Set up environment variables
+          MACHINE_TYPE="n2d-standard-2"
+            
+          # Create or update instance with container
+          gcloud compute instances create-with-container ${{ env.STAGING_VM_NAME }} \
+            --project=${{ env.PROJECT_ID }} \
+            --zone=${{ secrets.GCP_ZONE }} \
+            --confidential-compute \
+            --maintenance-policy=TERMINATE \
+            --machine-type=$MACHINE_TYPE \
+            --service-account=confidential-sa@verifiable-ai-hackathon.iam.gserviceaccount.com \
+            --scopes=cloud-platform \
+            --container-image=${{ needs.build.outputs.image_url }} \
+            --shielded-secure-boot \
+            --create-disk=auto-delete=yes,boot=yes,device-name=boot,image=projects/confidential-space-images/global/images/confidential-space-debug-${{ secrets.CS_IMAGE_VERSION }},mode=rw,size=20,type=pd-balanced \
+            --tags=http-server,https-server \
+            --metadata=startup-script="#! /bin/bash\necho \"Starting TEE confidential container...\"" \
+            --labels=confidential-computing=true,environment=staging,managed-by=github-actions \
+            || gcloud compute instances update-container ${{ env.STAGING_VM_NAME }} \
+              --project=${{ env.PROJECT_ID }} \
+              --zone=${{ secrets.GCP_ZONE }} \
+              --container-image=${{ needs.build.outputs.image_url }}
+            
+          # Wait for instance to be ready
+          sleep 60
+            
+          # Get the external IP
+          STAGING_IP=$(gcloud compute instances describe ${{ env.STAGING_VM_NAME }} --project=${{ env.PROJECT_ID }} --zone=${{ secrets.GCP_ZONE }} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+          echo "Deployed to Staging at http://$STAGING_IP/"
