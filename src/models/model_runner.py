@@ -7,6 +7,8 @@ import time
 import traceback
 from typing import Dict, List, Any, Callable, Optional, Union, TypeVar, Generic, Protocol
 
+from src.models.ai_model import AIModel
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,8 @@ class ModelRunner:
     Handles the execution of multiple AI models in parallel.
     """
     
-    def __init__(self):
+    def __init__(self, router_client):
+        self.router_client = router_client
         self.models = {}
         
     def register_model(self, model_id: str, model_fn: Callable, **kwargs):
@@ -258,3 +261,162 @@ class ModelRunner:
             logger.info("Fine-tuning completed")
         else:
             logger.warning("No models were eligible for fine-tuning")
+
+    async def generate_completion(self, 
+                              prompt: str, 
+                              model_id: str = None,
+                              model: str = None,
+                              max_tokens: int = 1000, 
+                              temperature: float = 0.7, 
+                              timeout: float = 30.0, 
+                              **kwargs) -> Dict[str, Any]:
+        """
+        Generate a completion from a model based on the given prompt.
+        
+        Args:
+            prompt: The text prompt to generate a completion for
+            model_id: ID of the model to use (uses the first available model if None)
+            max_tokens: Maximum number of tokens to generate
+            temperature: Controls randomness in generation (higher = more random)
+            timeout: Maximum execution time in seconds
+            **kwargs: Additional parameters to pass to the model
+            
+        Returns:
+            Dictionary containing the generated completion and metadata
+        """
+        # Use model_id if provided, otherwise use model parameter
+        if model_id is None and model is not None:
+            model_id = model
+            
+        logger.info(f"Generating completion with model {model_id if model_id else 'default'}")
+        
+        # If no model specified, use the first available model
+        if model_id is None:
+            available_models = self.get_available_models()
+            if not available_models:
+                raise ValueError("No models available for generating completions")
+            model_id = available_models[0]
+            logger.info(f"Using default model: {model_id}")
+        
+        # Check if model exists
+        if model_id not in self.models:
+            raise ValueError(f"Model {model_id} not found")
+        
+        # Prepare input data
+        input_data = {
+            "prompt": prompt,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            **kwargs
+        }
+        
+        try:
+            # Execute the model
+            result = await self._execute_model(model_id, input_data, timeout=timeout)
+            
+            if result["status"] == "success":
+                logger.info(f"Successfully generated completion with model {model_id}")
+                return {
+                    "model_id": model_id,
+                    "completion": result["output"],
+                    "status": "success",
+                    "execution_time": result.get("execution_time"),
+                }
+            else:
+                logger.error(f"Failed to generate completion with model {model_id}: {result.get('error')}")
+                return {
+                    "model_id": model_id,
+                    "completion": None,
+                    "status": result["status"],
+                    "error": result.get("error"),
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in generate_completion: {str(e)}")
+            return {
+                "model_id": model_id,
+                "completion": None,
+                "status": "error",
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+
+    async def generate_chat_completion(self, 
+                              messages: List[Dict[str, str]], 
+                              model_id: str = None,
+                              model: str = None,
+                              max_tokens: int = 1000, 
+                              temperature: float = 0.7, 
+                              timeout: float = 30.0, 
+                              **kwargs) -> Dict[str, Any]:
+        """
+        Generate a chat completion from a model based on the given messages.
+        
+        Args:
+            messages: List of message dictionaries, each with 'role' and 'content' keys
+            model_id: ID of the model to use (uses the first available model if None)
+            max_tokens: Maximum number of tokens to generate
+            temperature: Controls randomness in generation (higher = more random)
+            timeout: Maximum execution time in seconds
+            **kwargs: Additional parameters to pass to the model
+            
+        Returns:
+            Dictionary containing the generated chat completion and metadata
+        """
+        # Use model_id if provided, otherwise use model parameter
+        if model_id is None and model is not None:
+            model_id = model
+            
+        logger.info(f"Generating chat completion with model {model_id if model_id else 'default'}")
+        
+        # If no model specified, use the first available model
+        if model_id is None:
+            available_models = self.get_available_models()
+            if not available_models:
+                raise ValueError("No models available for generating chat completions")
+            model_id = available_models[0]
+            logger.info(f"Using default model: {model_id}")
+        
+        # Check if model exists
+        if model_id not in self.models:
+            raise ValueError(f"Model {model_id} not found")
+        
+        # Prepare input data
+        input_data = {
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            **kwargs
+        }
+        
+        try:
+            # Execute the model
+            result = await self._execute_model(model_id, input_data, timeout=timeout)
+            
+            if result["status"] == "success":
+                logger.info(f"Successfully generated chat completion with model {model_id}")
+                return {
+                    "model_id": model_id,
+                    "completion": result["output"],
+                    "status": "success",
+                    "execution_time": result.get("execution_time"),
+                }
+            else:
+                logger.error(f"Failed to generate chat completion with model {model_id}: {result.get('error')}")
+                return {
+                    "model_id": model_id,
+                    "completion": None,
+                    "status": result["status"],
+                    "error": result.get("error"),
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in generate_chat_completion: {str(e)}")
+            return {
+                "model_id": model_id,
+                "completion": None,
+                "status": "error",
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+

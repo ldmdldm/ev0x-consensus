@@ -18,13 +18,27 @@ import logging
 import os
 import sys
 import time
-from typing import Dict, List, Optional, Union
+import pytest
+pytest.register_assert_rewrite('pytest_asyncio')
+
+# Enable pytest-asyncio plugin
+pytest_plugins = ('pytest_asyncio',)
+
+# Register asyncio marker
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "asyncio: mark test as an async test"
+    )
+
+from typing import Dict, List, Optional, Union, Any
 
 # Add the src directory to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.router.openrouter import OpenRouterClient
 from src.consensus.synthesizer import ConsensusSynthesizer
+from src.consensus.citation_verifier import CitationVerifier
 from src.factual.citation import verify_citations
 from src.models.model_runner import ModelRunner
 from src.tee.confidential_vm import verify_attestation
@@ -41,6 +55,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("consensus_test")
+
 
 # Test prompts
 TEST_PROMPTS = {
@@ -80,9 +95,7 @@ class ConsensusSystemTester:
             raise
         
         # Initialize components
-        self.router_client = OpenRouterClient(self.api_key)
-        self.model_runner = ModelRunner(self.router_client)
-        self.synthesizer = ConsensusSynthesizer(self.config)
+        self._init_components()
         
         # Test state
         self.results = {
@@ -93,11 +106,25 @@ class ConsensusSystemTester:
             "attestation": None
         }
 
+    def _init_components(self):
+        """Initialize system components."""
+        # Initialize router client with API key
+        self.router_client = OpenRouterClient(self.api_key)
+        
+        # Initialize model runner
+        self.model_runner = ModelRunner(self.router_client)
+        
+        # Initialize synthesizer with config and router client
+        self.synthesizer = ConsensusSynthesizer(self.config)
+        self.synthesizer.router_client = self.router_client
+
     async def test_attestation(self):
         """Test the TEE attestation mechanism."""
         logger.info("Testing TEE attestation...")
         try:
-            attestation_result = await verify_attestation()
+            # Get project_id from config if available, otherwise use default
+            project_id = self.config.get("project_id", "ev0x-consensus")
+            attestation_result = await verify_attestation(project_id=project_id)
             self.results["attestation"] = attestation_result
             logger.info(f"Attestation result: {attestation_result}")
             return attestation_result
@@ -119,6 +146,41 @@ class ConsensusSystemTester:
                 if is_available:
                     available_models.append(model_id)
                     logger.info(f"Model {model_id} is available")
+                    
+                    # Register model with ModelRunner to handle both prompt and messages inputs
+                    async def model_fn(input_data, **kwargs):
+                        # Handle different input formats from ModelRunner
+                        if isinstance(input_data, str):
+                            # Direct string prompt (completion case)
+                            return await self.router_client.completion(
+                                prompt=input_data,
+                                model=model_id,
+                                **kwargs
+                            )
+                        elif isinstance(input_data, dict):
+                            # Dictionary input format
+                            if "prompt" in input_data:
+                                # Dictionary with prompt key (completion case)
+                                return await self.router_client.completion(
+                                    prompt=input_data["prompt"],
+                                    model=model_id,
+                                    **kwargs
+                                )
+                            elif "messages" in input_data:
+                                # Dictionary with messages key (chat completion case)
+                                return await self.router_client.chat_async(
+                                    messages=input_data["messages"],
+                                    model=model_id,
+                                    **kwargs
+                                )
+                        # Fallback to treating input as messages for backward compatibility
+                        return await self.router_client.chat_async(
+                            messages=input_data,
+                            model=model_id,
+                            **kwargs
+                        )
+                    self.model_runner.register_model(model_id, model_fn)
+                    logger.info(f"Registered model {model_id} with ModelRunner")
                 else:
                     unavailable_models.append(model_id)
                     logger.warning(f"Model {model_id} is not available")
@@ -144,8 +206,18 @@ class ConsensusSystemTester:
                     max_tokens=self.config.get("max_tokens", 1000),
                     temperature=self.config.get("temperature", 0.7)
                 )
-                logger.info(f"Single model completion successful: {model_id}")
-                return completion
+                # Check if completion was successful
+                if completion and completion.get("status") == "success" and completion.get("completion") is not None:
+                    logger.info(f"Single model completion successful: {model_id}")
+                    # Return a dictionary with the same structure as consensus completions for consistent handling
+                    return {
+                        "consensus_output": completion.get("completion"),
+                        "model_outputs": [{"id": model_id, "output": completion.get("completion")}],
+                        "elapsed_time": completion.get("elapsed_time", 0)
+                    }
+                else:
+                    logger.warning(f"Single model completion failed for {model_id}: {completion}")
+                    return None
             else:
                 # Test consensus completion
                 consensus_result = await self.synthesizer.generate_consensus_completion(prompt)
@@ -259,13 +331,29 @@ class ConsensusSystemTester:
             self.results["errors"].append(f"Iterative feedback error: {str(e)}")
             return None
 
-    async def test_citation_verification(self, response: str):
-        """Test the citation verification mechanism."""
-        logger.info("Testing citation verification...")
+    async def test_citation_verification(self, text: str) -> Dict[str, Any]:
+        """Test citation verification functionality."""
         try:
-            verification_result = verify_citations(response)
-            logger.info(f"Citation verification completed with {len(verification_result.get('citations', []))} citations")
-            return verification_result
+            # Import and use the CitationVerifier
+            from src.consensus.citation_verifier import CitationVerifier
+            
+            # Verify citations using the CitationVerifier
+            result = await CitationVerifier.verify_citations(text)
+            
+            if result["is_verified"]:
+                self.results["citation_verification"] = {
+                    "status": "success",
+                    "verified_citations": result["verified_citations"],
+                    "total_citations": result["total_citations"]
+                }
+            else:
+                self.results["citation_verification"] = {
+                    "status": "failed",
+                    "message": result.get("message", "Citation verification failed")
+                }
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Citation verification failed: {e}")
             self.results["errors"].append(f"Citation verification error: {str(e)}")
@@ -366,5 +454,236 @@ async def interactive_mode():
         print("2. Test chat completion")
         print("3. Test iterative feedback")
         print("4. Test citation verification")
-        print("5
+        print("5. Run all tests")
+        print("6. Exit")
+        
+        choice = input("\nEnter your choice (1-6): ").strip()
+        
+        try:
+            if choice == "1":
+                # Test completion
+                prompt_type = input("Enter prompt type (factual, creative, reasoning, multi_step, controversial) or custom: ").strip()
+                if prompt_type in TEST_PROMPTS:
+                    prompt = TEST_PROMPTS[prompt_type]
+                else:
+                    prompt = input("Enter custom prompt: ").strip()
+                
+                use_model = input("Test with specific model? (y/n): ").strip().lower()
+                if use_model == 'y':
+                    model_id = input("Enter model ID: ").strip()
+                    result = await tester.test_completion(prompt, model_id)
+                else:
+                    result = await tester.test_completion(prompt)
+                
+                print("\nCompletion Result:")
+                print(json.dumps(result, indent=2))
+            
+            elif choice == "2":
+                # Test chat completion
+                use_default = input("Use default test conversation? (y/n): ").strip().lower()
+                if use_default == 'y':
+                    messages = TEST_CONVERSATION
+                else:
+                    messages = []
+                    system_msg = input("Enter system message (optional): ").strip()
+                    if system_msg:
+                        messages.append({"role": "system", "content": system_msg})
+                    
+                    user_msg = input("Enter user message: ").strip()
+                    messages.append({"role": "user", "content": user_msg})
+                
+                use_model = input("Test with specific model? (y/n): ").strip().lower()
+                if use_model == 'y':
+                    model_id = input("Enter model ID: ").strip()
+                    result = await tester.test_chat_completion(messages, model_id)
+                else:
+                    result = await tester.test_chat_completion(messages)
+                
+                print("\nChat Completion Result:")
+                print(json.dumps(result, indent=2))
+            
+            elif choice == "3":
+                # Test iterative feedback
+                prompt_type = input("Enter prompt type (factual, creative, reasoning, multi_step, controversial) or custom: ").strip()
+                if prompt_type in TEST_PROMPTS:
+                    prompt = TEST_PROMPTS[prompt_type]
+                else:
+                    prompt = input("Enter custom prompt: ").strip()
+                
+                iterations = input("Enter number of iterations (default: 3): ").strip()
+                iterations = int(iterations) if iterations else 3
+                
+                result = await tester.test_iterative_feedback(prompt, iterations)
+                
+                print("\nIterative Feedback Result:")
+                print(json.dumps(result, indent=2))
+            
+            elif choice == "4":
+                # Test citation verification
+                response_input = input("Enter text with citations to verify, or 'generate' to generate a response first: ").strip()
+                
+                if response_input == 'generate':
+                    result = await tester.test_completion(TEST_PROMPTS["factual"])
+                    if result:
+                        response = result.get("consensus_output", "")
+                        print(f"\nGenerated response:\n{response}\n")
+                    else:
+                        print("Failed to generate response for citation verification")
+                        continue
+                else:
+                    response = response_input
+                
+                verification_result = await tester.test_citation_verification(response)
+                
+                print("\nCitation Verification Result:")
+                print(json.dumps(verification_result, indent=2))
+            
+            elif choice == "5":
+                # Run all tests
+                print("\nRunning all tests. This may take several minutes...")
+                result = await tester.run_all_tests()
+                
+                print("\nTest Results:")
+                print(f"Success: {result['success']}")
+                print(f"Errors: {len(result['errors'])}")
+                print(f"Duration: {result['overall_duration']:.2f} seconds")
+                print(f"Report saved to: consensus_test_report.json")
+            
+            elif choice == "6":
+                # Exit
+                print("Exiting interactive mode.")
+                break
+            
+            else:
+                print("Invalid choice. Please enter a number between 1 and 6.")
+                
+        except Exception as e:
+            print(f"Error during test execution: {e}")
+            continue
+            
+        input("\nPress Enter to continue...")
 
+# Add main function for script execution
+def main():
+    parser = argparse.ArgumentParser(description="Test the ev0x consensus system")
+    parser.add_argument("--mode", choices=["interactive", "all"], default="interactive",
+                        help="Test mode: interactive or run all tests")
+    parser.add_argument("--config", default="input.json", help="Path to configuration file")
+    
+    args = parser.parse_args()
+    
+    if args.mode == "interactive":
+        asyncio.run(interactive_mode())
+    else:
+        tester = ConsensusSystemTester(args.config)
+        asyncio.run(tester.run_all_tests())
+
+
+# Pytest test functions
+@pytest.mark.asyncio
+async def test_attestation():
+    """Test TEE attestation verification."""
+    config_path = "input.json"
+    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OpenRouter API key not available in environment")
+        
+    tester = ConsensusSystemTester(config_path, api_key)
+    result = await tester.test_attestation()
+    
+    # We accept both success and simulated results since not all environments support TEE
+    assert result is not None, "Attestation verification should return a result"
+    # In non-TEE environments, this might be simulated
+    if isinstance(result, dict):
+        assert "attestation_id" in result or "simulated" in result, "Attestation should include ID or be marked as simulated"
+
+
+@pytest.mark.asyncio
+async def test_completion():
+    """Test completion functionality."""
+    config_path = "input.json"
+    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OpenRouter API key not available in environment")
+        
+    tester = ConsensusSystemTester(config_path, api_key)
+    prompt = "What is the capital of France?"
+    
+    # Test consensus completion
+    result = await tester.test_completion(prompt)
+    assert result is not None, "Completion result should not be None"
+    assert "consensus_output" in result, "Result should contain consensus_output"
+    assert "Paris" in result["consensus_output"], "Output should mention Paris as the capital of France"
+    
+    # Test with error handling
+    models_available = await tester.test_models_availability()
+    if models_available and len(tester.results["available_models"]) > 0:
+        # Test single model completion
+        model_id = tester.results["available_models"][0]
+        single_result = await tester.test_completion(prompt, model_id)
+        assert single_result is not None, f"Single model completion failed for {model_id}"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion():
+    """Test chat completion functionality."""
+    config_path = "input.json"
+    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OpenRouter API key not available in environment")
+        
+    tester = ConsensusSystemTester(config_path, api_key)
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is the capital of Italy?"}
+    ]
+    
+    # Test consensus chat completion
+    result = await tester.test_chat_completion(messages)
+    assert result is not None, "Chat completion result should not be None"
+    assert "consensus_output" in result, "Result should contain consensus_output"
+    assert "Rome" in result["consensus_output"], "Output should mention Rome as the capital of Italy"
+    
+    # Test with error handling
+    models_available = await tester.test_models_availability()
+    if models_available and len(tester.results["available_models"]) > 0:
+        # Test single model chat completion
+        model_id = tester.results["available_models"][0]
+        single_result = await tester.test_chat_completion(messages, model_id)
+        assert single_result is not None, f"Single model chat completion failed for {model_id}"
+
+
+@pytest.mark.asyncio
+async def test_citation_verification():
+    """Test citation verification functionality."""
+    config_path = "input.json"
+    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OpenRouter API key not available in environment")
+        
+    tester = ConsensusSystemTester(config_path, api_key)
+    
+    # Create a response with citations
+    text_with_citations = """
+    According to the World Health Organization (WHO), regular physical activity has significant health benefits [1].
+    A study published in The Lancet found that 150 minutes of moderate exercise per week can reduce mortality risk by 30% [2].
+    
+    [1] World Health Organization. (2020). Physical activity. https://www.who.int/news-room/fact-sheets/detail/physical-activity
+    [2] Lee, I. M., et al. (2012). Effect of physical inactivity on major non-communicable diseases worldwide. The Lancet, 380(9838), 219-229.
+    """
+    
+    result = await tester.test_citation_verification(text_with_citations)
+    assert result is not None, "Citation verification result should not be None"
+    assert result["is_verified"] is True, "Citations should be verified"
+    assert result["verified_citations"] > 0, "Should have at least one verified citation"
+    assert len(result["results"]) > 0, "Should have verification results"
+    
+    # Check the verification results structure
+    for verification in result["results"]:
+        assert "citation_number" in verification, "Each result should have a citation number"
+        assert "is_valid" in verification, "Each result should have a validity status"
+        assert "url" in verification, "Each result should have a URL"
+
+
+if __name__ == "__main__":
+    main()
