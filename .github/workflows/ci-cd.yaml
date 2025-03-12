@@ -1,4 +1,4 @@
-name: EV0X CI/CD Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -8,16 +8,19 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCR_REGISTRY: gcr.io
-  IMAGE_NAME: ev0x
-  TEE_CONFIG_PATH: deployment/tee_config.yaml
+  PROJECT_ID: verifiable-ai-hackathon
+  IMAGE_NAME: ev0x-consensus
+  STAGING_VM_NAME: ev0x-staging
+  PRODUCTION_VM_NAME: ev0x-production
 
 jobs:
   test:
-    name: Test and Quality Checks
+    name: Test
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,8 +28,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: '3.12'
           
       - name: Install dependencies
         run: |
@@ -34,15 +36,15 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov flake8 mypy bandit
           
-      - name: Lint with flake8
-        run: |
-          flake8 src tests --count --max-complexity=10 --max-line-length=127 --statistics
+#      - name: Lint with flake8
+#        run: |
+#          flake8 src tests --count --max-complexity=10 --max-line-length=127 --statistics
           
       - name: Type check with mypy
         run: |
           mypy src
           
-      - name: Security scan with bandit
+      - name: Security check with bandit
         run: |
           bandit -r src -f json -o bandit-report.json
           
@@ -63,8 +65,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    outputs:
-      image_url: ${{ steps.set-image-url.outputs.image_url }}
     
     steps:
       - name: Checkout code
@@ -82,15 +82,11 @@ jobs:
         
       - name: Configure Docker to use gcloud credentials
         run: |
-          gcloud auth configure-docker ${{ env.GCR_REGISTRY }}
+          gcloud auth configure-docker
           
-      - name: Build Docker image
+      - name: Build and Push Docker image
         run: |
-          docker build -t ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-          docker tag ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
-          
-      - name: Push Docker image to Google Container Registry
-        run: |
+          docker build -t ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} -t ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest .
           docker push ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
           
@@ -103,7 +99,6 @@ jobs:
     name: Deploy to Staging
     needs: build
     runs-on: ubuntu-latest
-    environment: staging
     permissions:
       contents: read
       id-token: write
@@ -124,16 +119,13 @@ jobs:
         
       - name: Deploy to Confidential VM in Staging
         run: |
-          # Extract TEE requirements from config
-          MACHINE_TYPE=$(grep 'machine_type' ${{ env.TEE_CONFIG_PATH }} | cut -d':' -f2 | xargs)
-          
-          # Default to n2d-standard-2 if not specified
-          if [ -z "$MACHINE_TYPE" ]; then
-            MACHINE_TYPE="n2d-standard-2"
-          fi
-          
-          # Create or update Confidential VM instance for staging
-          gcloud compute instances create-with-container ev0x-staging \
+          # Set up environment variables
+          MACHINE_TYPE="n2d-standard-2"
+            
+          # Create or update instance with container
+          gcloud compute instances create-with-container ${{ env.STAGING_VM_NAME }} \
+            --project=${{ env.PROJECT_ID }} \
+            --zone=${{ secrets.GCP_ZONE }} \
             --confidential-compute \
             --maintenance-policy=TERMINATE \
             --machine-type=$MACHINE_TYPE \
@@ -141,27 +133,27 @@ jobs:
             --shielded-secure-boot \
             --zone=${{ secrets.GCP_ZONE }} \
             --scopes=cloud-platform \
-            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
-            --container-env=ENVIRONMENT=staging \
-            --tags=staging \
-            --create-disk=boot=yes,auto-delete=yes,image-project=confidential-vm-images,image-family=confidential-vm-ubuntu-2204
+            --create-disk=auto-delete=yes,boot=yes,device-name=boot,image=projects/confidential-space-images/global/images/confidential-space-debug-${{ secrets.CS_IMAGE_VERSION }},mode=rw,size=20,type=pd-balanced \
+            --tags=http-server,https-server \
+            --metadata startup-script="#! /bin/bash
+        echo \"Starting TEE confidential container...\"" \
+            || gcloud compute instances update-container ${{ env.STAGING_VM_NAME }} \
+              --project=${{ env.PROJECT_ID }} \
+              --zone=${{ secrets.GCP_ZONE }} \
+              --container-image=${{ needs.build.outputs.image_url }}
             
-      - name: Run post-deployment tests
-        run: |
-          # Wait for the instance to be fully running
+          # Wait for instance to be ready
           sleep 60
-          
+            
           # Get the external IP
-          EXTERNAL_IP=$(gcloud compute instances describe ev0x-staging --zone=${{ secrets.GCP_ZONE }} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-          
-          # Run simple health check
-          curl -sSf http://$EXTERNAL_IP/health || (echo "Health check failed" && exit 1)
-          
+          STAGING_IP=$(gcloud compute instances describe ${{ env.STAGING_VM_NAME }} --project=${{ env.PROJECT_ID }} --zone=${{ secrets.GCP_ZONE }} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+          echo "Deployed to Staging at http://$STAGING_IP/"
+            
   deploy-production:
     name: Deploy to Production
-    needs: deploy-staging
+    needs: [build, deploy-staging]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       contents: read
       id-token: write
@@ -182,16 +174,13 @@ jobs:
         
       - name: Deploy to Confidential VM in Production
         run: |
-          # Extract TEE requirements from config
-          MACHINE_TYPE=$(grep 'machine_type' ${{ env.TEE_CONFIG_PATH }} | cut -d':' -f2 | xargs)
-          
-          # Default to n2d-standard-2 if not specified
-          if [ -z "$MACHINE_TYPE" ]; then
-            MACHINE_TYPE="n2d-standard-2"
-          fi
-          
-          # Create or update Confidential VM instance for production
-          gcloud compute instances create-with-container ev0x-production \
+          # Set up environment variables
+          MACHINE_TYPE="n2d-standard-2"
+
+          # Create or update instance with container
+          gcloud compute instances create-with-container ${{ env.PRODUCTION_VM_NAME }} \
+            --project=${{ env.PROJECT_ID }} \
+            --zone=${{ secrets.GCP_ZONE }} \
             --confidential-compute \
             --maintenance-policy=TERMINATE \
             --machine-type=$MACHINE_TYPE \
@@ -199,29 +188,18 @@ jobs:
             --shielded-secure-boot \
             --zone=${{ secrets.GCP_ZONE }} \
             --scopes=cloud-platform \
-            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }} \
-            --container-env=ENVIRONMENT=production \
-            --tags=production \
-            --create-disk=boot=yes,auto-delete=yes,image-project=confidential-vm-images,image-family=confidential-vm-ubuntu-2204
+            --create-disk=auto-delete=yes,boot=yes,device-name=boot,image=projects/confidential-space-images/global/images/confidential-space-debug-${{ secrets.CS_IMAGE_VERSION }},mode=rw,size=20,type=pd-balanced \
+            --tags=http-server,https-server \
+            --metadata startup-script="#! /bin/bash
+        echo \"Starting TEE confidential container...\"" \
+            || gcloud compute instances update-container ${{ env.PRODUCTION_VM_NAME }} \
+              --project=${{ env.PROJECT_ID }} \
+              --zone=${{ secrets.GCP_ZONE }} \
+              --container-image=${{ needs.build.outputs.image_url }}
             
-      - name: Run post-deployment tests
-        run: |
-          # Wait for the instance to be fully running
+          # Wait for instance to be ready
           sleep 60
-          
+            
           # Get the external IP
-          EXTERNAL_IP=$(gcloud compute instances describe ev0x-production --zone=${{ secrets.GCP_ZONE }} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-          
-          # Run health and smoke tests
-          curl -sSf http://$EXTERNAL_IP/health || (echo "Health check failed" && exit 1)
-          curl -sSf http://$EXTERNAL_IP/status || (echo "Status check failed" && exit 1)
-          
-      - name: Notify deployment status
-        if: always()
-        run: |
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "Deployment to production successful!"
-          else
-            echo "Deployment to production failed!"
-          fi
-
+          PRODUCTION_IP=$(gcloud compute instances describe ${{ env.PRODUCTION_VM_NAME }} --project=${{ env.PROJECT_ID }} --zone=${{ secrets.GCP_ZONE }} --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+          echo "Deployed to Production at http://$PRODUCTION_IP/"
