@@ -11,6 +11,57 @@ env:
   GCR_REGISTRY: gcr.io
   PROJECT_ID: verifiable-ai-hackathon
   IMAGE_NAME: ev0x-consensus
+
+jobs:
+  build:
+    name: Build and Push Container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    outputs:
+      image_url: ${{ steps.set-image-url.outputs.image_url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        
+      - name: Configure Docker to use gcloud credentials
+        run: gcloud auth configure-docker
+        
+      - name: Build and Push Docker image
+        run: |
+          docker build -t ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker push ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          
+      - name: Save image reference for deployment
+        id: set-image-url
+        run: echo "image_url=${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  GCR_REGISTRY: gcr.io
+  PROJECT_ID: verifiable-ai-hackathon
+  IMAGE_NAME: ev0x-consensus
   STAGING_VM_NAME: ev0x-staging
   PRODUCTION_VM_NAME: ev0x-production
 
