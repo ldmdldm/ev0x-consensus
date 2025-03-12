@@ -59,8 +59,7 @@ logger = logging.getLogger("consensus_test")
 
 # Test prompts
 TEST_PROMPTS = {
-        "factual": "What are the largest cities in California by population? "
-                   "Please provide population figures and cite your sources.",
+        "factual": "What are the largest cities in California by population? Please provide population figures and cite your sources.",
         "creative": "Write a short poem about artificial intelligence and human creativity.",
         "reasoning": "Explain the prisoner's dilemma and how it relates to game theory.",
         "multi_step": "Design a simple algorithm to find the nth Fibonacci number and analyze its time complexity.",
@@ -69,12 +68,9 @@ TEST_PROMPTS = {
 
 # Test conversation for chat mode
 TEST_CONVERSATION = [
-        {"role": "system", "content": "You are a helpful, factual assistant that provides accurate "
-                 "information with citations when appropriate."},
+        {"role": "system", "content": "You are a helpful, factual assistant that provides accurate information with citations when appropriate."},
         {"role": "user", "content": "Tell me about quantum computing. What are qubits and how do they work?"},
-        {"role": "assistant", "content": "Quantum computing is a type of computing that uses quantum "
-                 "mechanics to process information. The basic unit of quantum "
-                 "information is the qubit."},
+        {"role": "assistant", "content": "Quantum computing is a type of computing that uses quantum mechanics to process information. The basic unit of quantum information is the qubit."},
         {"role": "user", "content": "Can you elaborate on quantum entanglement and its role in quantum computing?"}
 ]
 
@@ -678,11 +674,6 @@ async def test_citation_verification():
     text_with_citations = """
     According to the World Health Organization (WHO), regular physical activity has significant health benefits [1].
     A study published in The Lancet found that 150 minutes of moderate exercise per week can reduce mortality risk by 30% [2].
-
-            f"\nConsensus result with {len(models)} models: "
-            f"'{consensus_result.get('consensus_output', 'No consensus')}'",
-            f"\nModel outputs: "
-            f"{', '.join([f'{model}: {output.get('output')}' for model, output in model_outputs.items()])}",
     """
 
     result = await tester.test_citation_verification(text_with_citations)
