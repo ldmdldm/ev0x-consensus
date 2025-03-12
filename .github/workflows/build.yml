@@ -15,7 +15,7 @@ jobs:
       tee-ready: ${{ steps.tee-check.outputs.ready }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Validate TEE environment requirements
         id: tee-check
@@ -35,7 +35,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
