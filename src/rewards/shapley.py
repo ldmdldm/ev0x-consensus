@@ -144,14 +144,15 @@ class ShapleyCalculator:
         
         return shapley_values
         
-    def calculate_for_text_outputs(self, model_outputs: Dict[str, str], 
+    def calculate_for_text_outputs(self, model_outputs: Dict[str, dict], 
                                 reference_output: str = None) -> Dict[str, float]:
         """
         Calculate Shapley values for text outputs by comparing them to a reference
         or to each other based on similarity metrics.
         
         Args:
-            model_outputs: Dictionary mapping model IDs to their text outputs
+            model_outputs: Dictionary mapping model IDs to their outputs, where each output
+                          is a dict with 'status' and 'output' fields
             reference_output: Optional reference output to compare against
             
         Returns:
@@ -165,7 +166,9 @@ class ShapleyCalculator:
                 
             # If we have a reference, compare to it
             if reference_output:
-                subset_outputs = [model_outputs[model_id] for model_id in model_subset]
+                # Extract the actual text output from the nested structure
+                subset_outputs = [model_outputs[model_id].get("output", "") if isinstance(model_outputs[model_id], dict) 
+                                 else model_outputs[model_id] for model_id in model_subset]
                 # Use simple average similarity for this implementation
                 # In practice, more sophisticated NLP metrics would be used
                 similarities = [self._text_similarity(output, reference_output) 
@@ -173,7 +176,9 @@ class ShapleyCalculator:
                 return sum(similarities) / len(similarities)
             
             # Without reference, measure internal agreement
-            subset_outputs = [model_outputs[model_id] for model_id in model_subset]
+            # Extract the actual text output from the nested structure
+            subset_outputs = [model_outputs[model_id].get("output", "") if isinstance(model_outputs[model_id], dict) 
+                             else model_outputs[model_id] for model_id in model_subset]
             if len(subset_outputs) == 1:
                 return 0.5  # Neutral score for single model
                 
