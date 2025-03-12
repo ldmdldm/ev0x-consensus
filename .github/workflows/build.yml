@@ -117,7 +117,7 @@ jobs:
           echo ${{ steps.attestation.outputs.attestation-token }} > attestation-evidence/token.jwt
           
       - name: Upload attestation evidence
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: attestation-evidence
           path: attestation-evidence/
