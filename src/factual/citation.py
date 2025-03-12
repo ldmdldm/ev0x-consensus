@@ -1249,6 +1249,15 @@ class CitationVerifier:
         Returns:
             Formatted citation string
         """
+        """Format a citation according to standard citation styles.
+        
+        Args:
+            citation: Citation object to format
+            format_type: Citation format style (apa, mla, etc.)
+            
+        Returns:
+            Formatted citation string
+        """
         if format_type.lower() == "apa":
             # APA format: Author(s) (Year). Title. Source. DOI
             author_text = ""
@@ -1290,3 +1299,27 @@ class CitationVerifier:
         else:
             # Default simple format
             return str(citation)
+
+
+def verify_citations(text: str, source_types: Optional[List[SourceType]] = None) -> Dict[str, Any]:
+    """Verify citations and factual claims in a text.
+    
+    This function is a convenient wrapper around the CitationVerifier class functionality.
+    It verifies factual claims in the provided text using academic sources like arXiv
+    and PubMed.
+    
+    Args:
+        text: The text containing claims to verify
+        source_types: Source types to check (default: all supported types)
+    
+    Returns:
+        Dictionary with verification results containing:
+        - total_claims: Number of claims detected
+        - verified_claims: Number of claims that were verified
+        - verification_rate: Percentage of verified claims
+        - total_citations: Total number of relevant citations found
+        - processing_time_seconds: Time taken for verification
+        - claim_results: Detailed results for each claim
+    """
+    verifier = CitationVerifier(cache_enabled=True)
+    return verifier.verify_text(text, source_types)

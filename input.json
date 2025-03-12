@@ -1,89 +1,30 @@
 {
-    "models": [
-        {
-            "id": "anthropic/claude-3-opus:beta",
-            "parameters": {
-                "max_tokens": 1024,
-                "temperature": 0.7,
-                "top_p": 0.95,
-                "frequency_penalty": 0,
-                "presence_penalty": 0
-            }
-        },
-        {
-            "id": "google/gemini-1.5-pro-latest",
-            "parameters": {
-                "max_tokens": 1024,
-                "temperature": 0.8,
-                "top_p": 0.9,
-                "frequency_penalty": 0.1,
-                "presence_penalty": 0
-            }
-        },
-        {
-            "id": "meta-llama/llama-3-70b-instruct",
-            "parameters": {
-                "max_tokens": 1024,
-                "temperature": 0.75,
-                "top_p": 0.92,
-                "frequency_penalty": 0.05,
-                "presence_penalty": 0.05
-            }
-        },
-        {
-            "id": "mistralai/mistral-large-latest",
-            "parameters": {
-                "max_tokens": 1024,
-                "temperature": 0.72,
-                "top_p": 0.93,
-                "frequency_penalty": 0.03,
-                "presence_penalty": 0.02
-            }
-        },
-        {
-            "id": "openai/gpt-4o",
-            "parameters": {
-                "max_tokens": 1024,
-                "temperature": 0.65,
-                "top_p": 0.95,
-                "frequency_penalty": 0.1,
-                "presence_penalty": 0.1
-            }
-        }
-    ],
-    "aggregator": {
-        "model_id": "anthropic/claude-3-opus:beta",
-        "parameters": {
-            "max_tokens": 2048,
-            "temperature": 0.5,
-            "top_p": 0.98,
-            "frequency_penalty": 0,
-            "presence_penalty": 0
-        },
-        "additional_context": "You are a consensus builder tasked with creating a unified response based on multiple model outputs. Focus on factual accuracy, logical coherence, and comprehensive coverage of the topic. Resolve conflicts by examining evidence and reasoning across responses.",
-        "aggregation_prompt": "### Task\nYou are presented with responses from multiple different AI models to the same question. Your job is to create a consensus answer that:\n1. Preserves factual information that appears in multiple responses\n2. Resolves contradictions by weighing evidence and reasoning\n3. Creates a more complete and accurate answer than any individual response\n4. Includes citations whenever possible to support factual claims\n\n### Original Question\n{question}\n\n### Model Responses\n{responses}\n\n### Instructions\nProduce a consensus answer that synthesizes the best elements from all model responses, resolves contradictions, and produces a comprehensive, factually accurate response.\n\nInclude a \"Sources\" section at the end that lists any references mentioned by the models that appear credible.",
-        "handling": {
-            "include_original_responses": true,
-            "include_model_ids": true,
-            "formatting": "markdown"
-        }
-    },
-    "iterations": {
-        "max_iterations": 3,
-        "improvement_threshold": 0.05,
-        "feedback_prompt": "The consensus answer can be improved in the following ways:\n1. {feedback_points}\n\nPlease revise the consensus answer to address these issues while maintaining factual accuracy and comprehensive coverage."
-    },
-    "citation_verification": {
-        "enabled": true,
-        "verify_urls": true,
-        "extract_quotes": true,
-        "minimum_confidence": 0.75
-    },
-    "system_settings": {
-        "timeout_seconds": 60,
-        "max_parallel_requests": 5,
-        "retry_attempts": 2,
-        "cache_duration_minutes": 60
+  "models": [
+    {
+      "id": "nousresearch/nous-hermes-2-mixtral-8x7b-dpo",
+      "params": {
+        "temperature": 0.7,
+        "max_tokens": 300
+      }
     }
+  ],
+  "consensus": {
+    "method": "text_consensus",
+    "params": {
+      "min_agreement": 0.7,
+      "max_iterations": 3
+    }
+  },
+  "aggregator": {
+    "model_id": "nousresearch/nous-hermes-2-mixtral-8x7b-dpo",
+    "parameters": {
+      "temperature": 0.7,
+      "max_tokens": 1024
+    }
+  },
+  "iterations": {
+    "max_iterations": 3,
+    "improvement_threshold": 0.05,
+    "feedback_prompt": "Analyze the consensus answer and suggest improvements for: {{query}} | Current answer: {{consensus}}"
+  }
 }
-

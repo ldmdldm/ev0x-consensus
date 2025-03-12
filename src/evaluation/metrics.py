@@ -10,6 +10,179 @@ import os
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
+def evaluate_consensus_quality(consensus_results: List[Dict[str, Any]],
+                              model_responses: Optional[List[Dict[str, Any]]] = None,
+                              previous_iterations: Optional[List[Dict[str, Any]]] = None) -> Dict[str, float]:
+    """
+    Evaluate the quality of consensus results based on multiple metrics.
+    
+    Args:
+        consensus_results: List of final consensus results from multiple models
+        model_responses: Optional list of individual model responses before consensus
+        previous_iterations: Optional list of results from previous consensus iterations
+        
+    Returns:
+        Dictionary of quality metrics including agreement rates, diversity, and consistency
+    """
+    metrics = {}
+    
+    # Calculate agreement rate if model_responses are provided
+    if model_responses and len(model_responses) > 1:
+        # Count how many models agree with the final consensus for each point
+        agreements = []
+        for i, consensus in enumerate(consensus_results):
+            consensus_text = consensus.get('text', '')
+            
+            # Skip empty consensus results
+            if not consensus_text:
+                continue
+                
+            # Count agreements for this consensus item
+            model_agreements = 0
+            model_count = 0
+            
+            for response in model_responses:
+                if i < len(response.get('responses', [])):
+                    model_text = response.get('responses', [])[i].get('text', '')
+                    model_count += 1
+                    
+                    # Consider "agreement" if the texts have significant overlap
+                    # This is a simple approach; more sophisticated text similarity could be used
+                    if consensus_text and model_text:
+                        # Calculate Jaccard similarity of word sets
+                        consensus_words = set(consensus_text.lower().split())
+                        model_words = set(model_text.lower().split())
+                        
+                        if consensus_words and model_words:
+                            overlap = len(consensus_words.intersection(model_words))
+                            union = len(consensus_words.union(model_words))
+                            similarity = overlap / union if union > 0 else 0
+                            
+                            # Consider it an agreement if similarity is above threshold
+                            if similarity > 0.5:
+                                model_agreements += 1
+            
+            if model_count > 0:
+                agreements.append(model_agreements / model_count)
+        
+        if agreements:
+            metrics['agreement_rate'] = float(np.mean(agreements))
+            metrics['agreement_std'] = float(np.std(agreements))
+    
+    # Calculate response diversity
+    if model_responses and len(model_responses) > 1:
+        diversity_scores = []
+        
+        for i in range(len(consensus_results)):
+            # Collect all model responses for this item
+            responses = []
+            for response in model_responses:
+                if i < len(response.get('responses', [])):
+                    text = response.get('responses', [])[i].get('text', '')
+                    if text:
+                        responses.append(text)
+            
+            if len(responses) > 1:
+                # Calculate pairwise dissimilarity between all responses
+                pairwise_diversities = []
+                for j in range(len(responses)):
+                    for k in range(j+1, len(responses)):
+                        words_j = set(responses[j].lower().split())
+                        words_k = set(responses[k].lower().split())
+                        
+                        if words_j and words_k:
+                            overlap = len(words_j.intersection(words_k))
+                            union = len(words_j.union(words_k))
+                            similarity = overlap / union if union > 0 else 0
+                            diversity = 1.0 - similarity
+                            pairwise_diversities.append(diversity)
+                
+                if pairwise_diversities:
+                    diversity_scores.append(np.mean(pairwise_diversities))
+        
+        if diversity_scores:
+            metrics['response_diversity'] = float(np.mean(diversity_scores))
+            metrics['diversity_std'] = float(np.std(diversity_scores))
+    
+    # Calculate consistency across iterations if previous iterations are provided
+    if previous_iterations and len(previous_iterations) > 0:
+        consistency_scores = []
+        
+        for i, final_result in enumerate(consensus_results):
+            final_text = final_result.get('text', '')
+            if not final_text:
+                continue
+                
+            # Track consistency with the last iteration result
+            iteration_similarities = []
+            
+            for iteration in previous_iterations:
+                if i < len(iteration.get('results', [])):
+                    iter_text = iteration.get('results', [])[i].get('text', '')
+                    
+                    if iter_text:
+                        # Calculate word-based similarity
+                        final_words = set(final_text.lower().split())
+                        iter_words = set(iter_text.lower().split())
+                        
+                        if final_words and iter_words:
+                            overlap = len(final_words.intersection(iter_words))
+                            union = len(final_words.union(iter_words))
+                            similarity = overlap / union if union > 0 else 0
+                            iteration_similarities.append(similarity)
+            
+            if iteration_similarities:
+                # Calculate the trend of similarity (increasing similarity = more consistent)
+                # This checks if later iterations are more similar to the final result
+                consistency_trend = 0
+                if len(iteration_similarities) > 1:
+                    # Simple linear regression slope of similarities over iterations
+                    x = np.arange(len(iteration_similarities))
+                    slope = np.polyfit(x, iteration_similarities, 1)[0]
+                    consistency_trend = slope
+                
+                # Also measure the final consistency with the last iteration
+                final_consistency = iteration_similarities[-1] if iteration_similarities else 0
+                consistency_scores.append(final_consistency)
+                
+                # Add the trend to metrics separately
+                if i == 0:  # Only add iteration trends once
+                    metrics['consistency_trend'] = float(consistency_trend)
+        
+        if consistency_scores:
+            metrics['process_consistency'] = float(np.mean(consistency_scores))
+    
+    # Additional summary metrics
+    # Comprehensiveness: were all inputs addressed in the consensus?
+    if consensus_results and model_responses:
+        completeness_scores = []
+        
+        for i, consensus in enumerate(consensus_results):
+            consensus_text = consensus.get('text', '')
+            if not consensus_text:
+                continue
+                
+            # Count unique concepts in all model responses
+            all_model_words = set()
+            for response in model_responses:
+                if i < len(response.get('responses', [])):
+                    model_text = response.get('responses', [])[i].get('text', '')
+                    if model_text:
+                        all_model_words.update(model_text.lower().split())
+            
+            # Count concepts in consensus
+            consensus_words = set(consensus_text.lower().split())
+            
+            # Calculate what portion of important concepts were included
+            if all_model_words:
+                completeness = len(consensus_words.intersection(all_model_words)) / len(all_model_words)
+                completeness_scores.append(completeness)
+        
+        if completeness_scores:
+            metrics['consensus_completeness'] = float(np.mean(completeness_scores))
+    
+    return metrics
+
 
 class Metrics:
     """

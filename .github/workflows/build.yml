@@ -128,11 +128,29 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Scan for vulnerabilities
+      - name: Install Trivy scanner
         run: |
-          echo "Performing security scan on container image..."
-          # Here we would integrate with a container security scanning solution
-          # such as Trivy, Snyk, or Anchore
-          
-          echo "Security scan complete"
-
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+      
+      - name: Scan container image
+        run: |
+          trivy image --severity HIGH,CRITICAL ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          # Exit with error code if there are critical vulnerabilities that must be fixed
+          trivy image --exit-code 1 --severity CRITICAL ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+        
+      - name: Export scan results
+        if: always()
+        run: |
+          mkdir -p scan-results
+          trivy image --format json --output scan-results/trivy-results.json ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+      
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results
+          path: scan-results/
+          retention-days: 7

@@ -5,23 +5,6 @@ from typing import Dict, List, Any, Callable, Optional, Union
 import numpy as np
 
 
-class ConsensusSynthesizer:
-    """
-    Takes multiple model outputs and generates a consensus result.
-    Calculates confidence scores based on agreement between models.
-    Handles different types of model outputs (text, structured data).
-    Provides methods for analyzing disagreements between models.
-    """
-    
-    def __init__(self):
-        self.strategies = {
-            "majority_vote": self._majority_vote,
-            "weighted_average": self._weighted_average,
-            "confidence_weighted": self._confidence_weighted,
-            "meta_model": self._meta_model
-        }
-        self.meta_model = None
-        self.output_history = []
         
 class Synthesizer:
     """
@@ -171,13 +154,15 @@ class ConsensusSynthesizer:
     Supports iterative feedback loop for consensus refinement and factual verification.
     """
     
-    def __init__(self, config_path=None):
+    def __init__(self, config):
         """
-        Initialize the ConsensusSynthesizer with parameters from configuration.
+        Initialize the synthesizer with configuration.
         
         Args:
-            config_path: Path to the configuration file (defaults to input.json)
+            config: Either a path to a JSON configuration file or a dictionary with configuration
         """
+        self.router_client = None  # Will be set externally
+        
         self.strategies = {
             "text_consensus": self._text_consensus,
             "structured_consensus": self._structured_consensus,
@@ -189,7 +174,13 @@ class ConsensusSynthesizer:
         self.iteration_history = []
         
         # Load configuration
-        self.config = self._load_configuration(config_path or "input.json")
+        if isinstance(config, str):
+            with open(config, 'r') as f:
+                self.config = json.load(f)
+        elif isinstance(config, dict):
+            self.config = config
+        else:
+            raise ValueError("Config must be either a path string or a dictionary")
         
         # Set up configuration parameters
         if self.config:
@@ -640,7 +631,7 @@ class ConsensusSynthesizer:
             for iteration in range(1, self.max_iterations):
                 try:
                     # Generate feedback on the current consensus
-                    feedback = self._generate_feedback(query, best_result, model_outputs)
+                    feedback = await self._generate_feedback(query, best_result, model_outputs)
                     
                     # Skip if no meaningful feedback was generated
                     if not feedback or feedback.strip() == "":
@@ -652,7 +643,7 @@ class ConsensusSynthesizer:
                     improvement_prompt = self.feedback_prompt.format(feedback_points=feedback_points)
                     
                     # Build a new set of model outputs that includes the refinement prompt
-                    refined_outputs = self._get_refinement_outputs(
+                    refined_outputs = await self._get_refinement_outputs(
                         query, 
                         best_result, 
                         improvement_prompt,
@@ -725,7 +716,103 @@ class ConsensusSynthesizer:
         
         return best_result
     
-    def _generate_feedback(self, query: str, consensus_result: Dict[str, Any], model_outputs: Dict[str, Dict[str, Any]]) -> str:
+    async def generate_consensus_completion(self, prompt: str) -> Dict[str, Any]:
+        """Generate a completion with consensus from multiple models."""
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Verify router client is initialized
+            if not self.router_client:
+                raise ValueError("Router client not initialized")
+            
+            # Get model configurations
+            model_outputs = {}
+            for model_config in self.config.get("models", []):
+                model_id = model_config.get("id")
+                params = model_config.get("params", {})
+                
+                if not model_id:
+                    continue
+                
+                # Generate completion with this model
+                response = await self.router_client.generate_async(
+                    model=model_id,
+                    prompt=prompt,
+                    **params
+                )
+                
+                model_outputs[model_id] = {
+                    "status": "success" if response else "error",
+                    "output": response.get("text", "") if response else ""
+                }
+            
+            # Generate consensus with iterations
+            consensus_result = await self.synthesize_with_iterations(prompt, model_outputs)
+            
+            # Format the result for the tests
+            result = consensus_result.copy()
+            # Ensure consensus_output key is present as expected by tests
+            result["consensus_output"] = consensus_result.get("consensus", "")
+            
+            # Return the full consensus result
+            return result
+        except Exception as e:
+            logger.error(f"Error generating consensus completion: {e}")
+            return {"consensus_output": "", "error": str(e)}
+    
+    async def generate_consensus_chat_completion(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        """Generate a chat completion with consensus from multiple models."""
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Verify router client is initialized
+            if not self.router_client:
+                raise ValueError("Router client not initialized")
+            
+            # Get model configurations
+            model_outputs = {}
+            for model_config in self.config.get("models", []):
+                model_id = model_config.get("id")
+                params = model_config.get("params", {})
+                
+                if not model_id:
+                    continue
+                
+                # Generate chat completion with this model
+                response = await self.router_client.chat_async(
+                    model=model_id,
+                    messages=messages,
+                    **params
+                )
+                
+                model_outputs[model_id] = {
+                    "status": "success" if response else "error",
+                    "output": response.get("text", "") if response else ""
+                }
+            
+            # Extract the prompt from the last message
+            last_message = messages[-1] if messages else {"content": ""}
+            prompt = last_message.get("content", "")
+            
+            # Generate consensus with iterations
+            consensus_result = await self.synthesize_with_iterations(prompt, model_outputs)
+            
+            # Format the result for the tests
+            result = consensus_result.copy()
+            # Ensure consensus_output key is present as expected by tests
+            result["consensus_output"] = consensus_result.get("consensus", "")
+            
+            # Return the full consensus result
+            return result
+        except Exception as e:
+            logger.error(f"Error generating consensus chat completion: {e}")
+            return {"consensus_output": "", "error": str(e)}
+    
+    async def _generate_feedback(self, query: str, consensus_result: Dict[str, Any], model_outputs: Dict[str, Dict[str, Any]]) -> str:
         """
         Generate feedback for improving the current consensus.
         
@@ -777,19 +864,22 @@ class ConsensusSynthesizer:
             Be concise and direct in your feedback.
             """.strip().format(query=query, consensus=consensus_text)
             
-            # Import here to avoid circular imports
-            from src.router.openrouter import OpenRouterClient
-            
-            # Initialize OpenRouter client
-            router_client = OpenRouterClient()
-            
+            # Generate feedback using the async method
+            if not self.router_client:
+                logger.warning("Router client not initialized")
+                return ""
+                
             # Generate feedback
-            response = router_client.generate(
+            response = await self.router_client.generate_async(
                 model=aggregator_model_id,
                 prompt=feedback_prompt,
                 max_tokens=1024,
                 temperature=0.7
             )
+            
+            if not response:
+                logger.warning("Failed to generate feedback")
+                return ""
             
             # Extract the feedback text
             feedback_text = response.get("text", "").strip()
@@ -804,4 +894,127 @@ class ConsensusSynthesizer:
                 return feedback_text
                 
         except Exception as e:
-            logger.error(f"Error generating feedback
+            logger.error(f"Error generating feedback: {str(e)}")
+            return ""
+            
+    def _evaluate_consensus_quality(self, consensus_result: Dict[str, Any]) -> float:
+        """
+        Evaluate the quality of a consensus result.
+        
+        Args:
+            consensus_result: Dictionary containing consensus output and metadata
+            
+        Returns:
+            Quality score between 0 and 1
+        """
+        try:
+            # Initialize quality metrics
+            metrics = []
+            
+            # 1. Basic validity check
+            if not consensus_result or "consensus" not in consensus_result:
+                return 0.0
+            
+            # 2. Check confidence score if available
+            if "confidence" in consensus_result:
+                metrics.append(consensus_result["confidence"])
+            
+            # 3. Check content quality
+            consensus_text = str(consensus_result["consensus"])
+            if consensus_text:
+                # Length metric (penalize extremely short or long outputs)
+                optimal_length = 500  # characters
+                actual_length = len(consensus_text)
+                length_score = min(1.0, actual_length / optimal_length) if actual_length < optimal_length else optimal_length / actual_length
+                metrics.append(length_score)
+                
+                # Structure metric (check for basic formatting)
+                has_structure = bool(
+                    consensus_text.strip() and
+                    any(char in consensus_text for char in ".!?") and  # Has sentence endings
+                    consensus_text[0].isupper()  # Starts with capital letter
+                )
+                metrics.append(1.0 if has_structure else 0.5)
+            
+            # 4. Check verification results if available
+            if "factual_verification" in consensus_result:
+                verification = consensus_result["factual_verification"]
+                if verification.get("total_claims", 0) > 0:
+                    verification_score = verification.get("verification_rate", 0)
+                    metrics.append(verification_score)
+            
+            # Calculate final score
+            if metrics:
+                # Weight recent verification more heavily
+                weights = [1.0] * len(metrics)
+                if "factual_verification" in consensus_result:
+                    weights[-1] = 2.0  # Double weight for verification
+                
+                # Normalize weights
+                weights = [w/sum(weights) for w in weights]
+                
+                # Calculate weighted average
+                final_score = sum(m * w for m, w in zip(metrics, weights))
+                return max(0.0, min(1.0, final_score))  # Ensure score is between 0 and 1
+            
+            return 0.5  # Default score if no metrics available
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error evaluating consensus quality: {e}")
+            return 0.0
+
+    async def _get_refinement_outputs(
+        self,
+        query: str,
+        previous_result: Dict[str, Any],
+        improvement_prompt: str,
+        aggregator_model_id: str,
+        aggregator_params: Dict[str, Any]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Get refined outputs from models based on feedback.
+        """
+        try:
+            if not self.router_client:
+                raise ValueError("Router client not initialized")
+                
+            refined_outputs = {}
+            
+            # Format the refinement prompt
+            refinement_context = f"""
+            Original query: {query}
+            Previous answer: {previous_result.get('consensus', '')}
+            
+            {improvement_prompt}
+            
+            Provide an improved answer that addresses these points:
+            """
+            
+            # Get refined outputs from each model
+            for model_config in self.models:
+                model_id = model_config.get("id")
+                params = model_config.get("params", {})
+                
+                if not model_id:
+                    continue
+                    
+                # Get refined output from this model
+                response = await self.router_client.generate_async(
+                    model=model_id,
+                    prompt=refinement_context,
+                    **{**params, **aggregator_params}
+                )
+                
+                refined_outputs[model_id] = {
+                    "status": "success" if response else "error",
+                    "output": response.get("text", "") if response else ""
+                }
+                
+            return refined_outputs
+            
+        except Exception as e:
+            logger.error(f"Error getting refinement outputs: {e}")
+            return {}
+

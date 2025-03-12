@@ -1,5 +1,5 @@
-import os
 import time
+import os
 import asyncio
 import aiohttp
 import json
@@ -8,7 +8,7 @@ from aiohttp import ClientSession, ClientTimeout
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import logging
-from ratelimit import limits, sleep_and_retry
+from collections import deque
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +34,7 @@ class OpenRouterException(Exception):
         super().__init__(f"OpenRouter API Error (Status: {status_code}): {message}")
 
 
-class OpenRouter:
+class OpenRouterClient:
     """
     OpenRouter API client that provides access to 300+ models through a unified interface.
     Includes proper error handling, rate limiting, and async support.
@@ -56,11 +56,11 @@ class OpenRouter:
         self.models_cache_expiry = None
         self.models_cache_duration = timedelta(hours=24)
         
-        # Create a semaphore for additional rate limiting control
-        self.semaphore = asyncio.Semaphore(10)  # Allow up to 10 concurrent requests
+        # Create a semaphore for rate limiting control
+        self.semaphore = asyncio.Semaphore(RATE_LIMIT)  # Limit concurrent requests to RATE_LIMIT
+        # Track request timestamps for rate limiting
+        self.request_timestamps = deque(maxlen=RATE_LIMIT*2)
     
-    @sleep_and_retry
-    @limits(calls=RATE_LIMIT, period=PERIOD)
     async def _make_request(self, endpoint: str, data: Dict, method: str = "POST") -> Dict:
         """
         Make a rate-limited request to the OpenRouter API.
@@ -73,7 +73,23 @@ class OpenRouter:
         Returns:
             Response data as dictionary
         """
+        # Implement rate limiting with the semaphore
         async with self.semaphore:
+            # Check if we need to wait to respect the rate limit
+            now = time.time()
+            if len(self.request_timestamps) >= RATE_LIMIT:
+                # Calculate how long to wait if we've reached the rate limit
+                oldest_timestamp = self.request_timestamps[0]
+                time_since_oldest = now - oldest_timestamp
+                if time_since_oldest < PERIOD:
+                    # Wait until a full period has passed since the oldest request
+                    wait_time = PERIOD - time_since_oldest
+                    logger.debug(f"Rate limit hit, waiting for {wait_time:.2f} seconds")
+                    await asyncio.sleep(wait_time)
+                    now = time.time()  # Update current time after waiting
+            
+            # Record this request's timestamp
+            self.request_timestamps.append(now)
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}",
@@ -424,6 +440,42 @@ class OpenRouter:
                 
         return results
 
+    async def check_model_availability(self, model_id: str) -> bool:
+        """
+        Check if a specified model is available on OpenRouter.
+        
+        Args:
+            model_id: The ID of the model to check
+            
+        Returns:
+            Boolean indicating whether the model is available
+        """
+        try:
+            # Get the list of available models
+            models = await self.get_models()
+            
+            # Log all available model IDs for debugging purposes
+            all_model_ids = [model.get('id') for model in models]
+            logger.info(f"Available models from OpenRouter API: {all_model_ids}")
+            
+            # Also log the model details to help with debugging format differences
+            logger.info(f"Looking for model: '{model_id}'")
+            
+            # Check if the specified model is in the list
+            for model in models:
+                model_id_from_api = model.get('id')
+                if model_id_from_api == model_id:
+                    logger.info(f"Model {model_id} is available")
+                    return True
+            
+            logger.warning(f"Model {model_id} is not available on OpenRouter")
+            logger.warning(f"Please ensure the model ID format matches exactly what's returned by the API")
+            return False
+        except Exception as e:
+            logger.error(f"Error checking model availability for {model_id}: {str(e)}")
+            # If there's an error, we can't confirm availability, so return False
+            return False
+
     async def get_credits(self) -> Dict[str, Any]:
         """
         Get current credit balance and usage information.
@@ -433,5 +485,81 @@ class OpenRouter:
         """
         try:
             endpoint = "stats/credits"
-            return await
+            return await self._make_request(endpoint, {}, method="GET")
+        except Exception as e:
+            logger.error(f"Failed to get credits: {str(e)}")
+            raise OpenRouterException(status_code=500, message=f"Error fetching credit information: {str(e)}")
 
+    async def generate_async(self, model: str, prompt: str, **kwargs) -> Optional[Dict]:
+        """Generate completion asynchronously."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "HTTP-Referer": "https://localhost",  # Required by OpenRouter
+                    "X-Title": "Consensus Flow Test",     # Required by OpenRouter
+                    "Content-Type": "application/json"
+                }
+                
+                data = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],  # OpenRouter expects messages format
+                    **kwargs
+                }
+                
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",  # Use chat completions endpoint
+                    headers=headers,
+                    json=data
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        if "choices" in result and len(result["choices"]) > 0 and "message" in result["choices"][0]:
+                            return {"text": result["choices"][0]["message"]["content"]}
+                        else:
+                            logger.warning(f"Unexpected API response format: {result}")
+                            return {"text": str(result), "error": "Unexpected response format"}
+                    else:
+                        logger.error(f"API request failed: {response.status}")
+                        return None
+                        
+        except Exception as e:
+            logger.error(f"Error in generate_async: {e}")
+            return None
+            
+    async def chat_async(self, model: str, messages: List[Dict[str, str]], **kwargs) -> Optional[Dict]:
+        """Generate chat completion asynchronously."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "HTTP-Referer": "https://localhost",  # Required by OpenRouter
+                    "X-Title": "Consensus Flow Test",     # Required by OpenRouter
+                    "Content-Type": "application/json"
+                }
+                
+                data = {
+                    "model": model,
+                    "messages": messages,
+                    **kwargs
+                }
+                
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=data
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        if "choices" in result and len(result["choices"]) > 0 and "message" in result["choices"][0]:
+                            return {"text": result["choices"][0]["message"]["content"]}
+                        else:
+                            logger.warning(f"Unexpected API response format: {result}")
+                            return {"text": str(result), "error": "Unexpected response format"}
+                    else:
+                        logger.error(f"API request failed: {response.status}")
+                        return None
+                        
+        except Exception as e:
+            logger.error(f"Error in chat_async: {e}")
+            return None

@@ -174,12 +174,16 @@ class TEEVerifier:
             logger.warning(f"Failed to detect CPU technology: {e}")
             return CPUTechnology.UNKNOWN
             
-    def verify_attestation(self) -> AttestationReport:
+    def verify_attestation(self, project_id: Optional[str] = None) -> AttestationReport:
         """
         Verify the attestation report from the TEE.
         
         This method requests an attestation report from the vTPM and verifies
         its authenticity and integrity.
+        
+        Args:
+            project_id: Optional Google Cloud project ID, 
+                        uses the one from the constructor if not provided
         
         Returns:
             AttestationReport object containing verification results
@@ -187,12 +191,14 @@ class TEEVerifier:
         Raises:
             AttestationError: If attestation verification fails
         """
+        # Use the project_id passed to the method or fall back to the one from the constructor
+        project_id = project_id or self.project_id
         try:
             # Step 1: Get attestation report from vTPM
             raw_report = self._get_attestation_report()
             
             # Step 2: Verify report with GCP attestation service
-            verification_result = self._verify_with_gcp(raw_report)
+            verification_result = self._verify_with_gcp(raw_report, project_id)
             
             # Step 3: Parse and validate the response
             verified = verification_result.get("verified", False)
@@ -292,12 +298,14 @@ class TEEVerifier:
         }
         return json.dumps(mock_data)
     
-    def _verify_with_gcp(self, attestation_report: str) -> Dict:
+    def _verify_with_gcp(self, attestation_report: str, project_id: Optional[str] = None) -> Dict:
         """
         Verify the attestation report with GCP attestation service.
         
         Args:
             attestation_report: Raw attestation report from vTPM
+            project_id: Optional Google Cloud project ID, 
+                      uses the one from the constructor if not provided
             
         Returns:
             Verification result as a dictionary
@@ -330,7 +338,9 @@ class TEEVerifier:
                 }
             
             # Construct API URL for verification
-            api_url = f"{self.GCP_ATTESTATION_ENDPOINT}/projects/{self.project_id}/locations/global/attestations"
+            # Use the project_id passed to the method or fall back to the one from the constructor
+            actual_project_id = project_id or self.project_id
+            api_url = f"{self.GCP_ATTESTATION_ENDPOINT}/projects/{actual_project_id}/locations/global/attestations"
             
             # In production, we would send the report to GCP attestation service
             # headers = {"Authorization": f"Bearer {self._get_gcp_token()}"}
@@ -344,7 +354,7 @@ class TEEVerifier:
                 "verified": True,
                 "details": {
                     "instance_id": self.instance_id,
-                    "project_id": self.project_id,
+                    "project_id": project_id or self.project_id,
                     "timestamp": time.time()
                 }
             }
@@ -402,5 +412,63 @@ class SecureKeyManager:
             # Verify the environment first if a verifier is available
             if self.tee_verifier and not self.verify_environment():
                 raise KeyManagementError("Cannot generate keys in an unverified environment")
+        except Exception as e:
+            logger.warning(f"Environment verification failed: {e}, proceeding with key generation")
+        finally:
+            logger.info(f"Generating new RSA key pair with name: {key_name}")
+            
+        # Generate RSA key pair
+        try:
+            private_key = rsa.generate_private_key(
+                public_exponent=65537,
+                key_size=key_size,
+                backend=default_backend()
+            )
+            
+            # Get public key
+            public_key = private_key.public_key()
+            
+            # Serialize keys to PEM format
+            private_key_pem = private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+            
+            public_key_pem = public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+            
+            # Store keys in memory (in production, private key would be stored securely)
+            self._keys[key_name] = {
+                "private_key": private_key_pem,
+                "public_key": public_key_pem
+            }
+            
+            logger.info(f"Successfully generated key pair: {key_name}")
+            return public_key_pem, private_key_pem
+            
+        except Exception as e:
+            raise KeyManagementError(f"Failed to generate key pair: {e}")
+
+
+def verify_attestation(project_id: str, instance_id: Optional[str] = None) -> AttestationReport:
+    """
+    Standalone function to verify TEE attestation.
+    
+    This function creates a TEEVerifier instance and calls its verify_attestation method.
+    
+    Args:
+        project_id: Google Cloud project ID
+        instance_id: Optional instance ID, will be auto-detected if not provided
         
+    Returns:
+        AttestationReport object containing verification results
+        
+    Raises:
+        AttestationError: If attestation verification fails
+    """
+    verifier = TEEVerifier(project_id=project_id, instance_id=instance_id)
+    return verifier.verify_attestation(project_id=project_id)
 

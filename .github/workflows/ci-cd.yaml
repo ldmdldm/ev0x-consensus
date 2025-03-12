@@ -63,6 +63,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      image_url: ${{ steps.set-image-url.outputs.image_url }}
     
     steps:
       - name: Checkout code
@@ -93,8 +95,9 @@ jobs:
           docker push ${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
           
       - name: Save image reference for deployment
+        id: set-image-url
         run: |
-          echo "IMAGE_URL=${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_ENV
+          echo "image_url=${{ env.GCR_REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
           
   deploy-staging:
     name: Deploy to Staging
@@ -134,7 +137,7 @@ jobs:
             --confidential-compute \
             --maintenance-policy=TERMINATE \
             --machine-type=$MACHINE_TYPE \
-            --container-image=${{ env.IMAGE_URL }} \
+            --container-image=${{ needs.build.outputs.image_url }} \
             --shielded-secure-boot \
             --zone=${{ secrets.GCP_ZONE }} \
             --scopes=cloud-platform \
@@ -192,7 +195,7 @@ jobs:
             --confidential-compute \
             --maintenance-policy=TERMINATE \
             --machine-type=$MACHINE_TYPE \
-            --container-image=${{ env.IMAGE_URL }} \
+            --container-image=${{ needs.build.outputs.image_url }} \
             --shielded-secure-boot \
             --zone=${{ secrets.GCP_ZONE }} \
             --scopes=cloud-platform \
