@@ -1,0 +1,143 @@
+# EV0X System - Production Configuration
+# Production-ready settings that extend defaults.yml
+
+system:
+  log_level: "warning"
+  data_dir: "/var/lib/ev0x/data"
+  backup:
+    enabled: true
+    frequency: 86400  # Daily backups
+    retention_days: 30
+  monitoring:
+    enabled: true
+    metrics_port: 9100
+    health_check_interval: 60
+
+models:
+  default_temperature: 0.5  # Lower temperature for more consistent outputs
+  default_max_tokens: 4096
+  available_models:
+    - name: "gpt-4"
+      provider: "openai"
+      weight: 1.0
+      capabilities:
+        - "reasoning"
+        - "planning"
+        - "creativity"
+      rate_limit: 100
+    - name: "claude-2"
+      provider: "anthropic"
+      weight: 0.9
+      capabilities:
+        - "reasoning"
+        - "analysis"
+      rate_limit: 80
+    - name: "llama-2-70b"
+      provider: "meta"
+      weight: 0.8
+      capabilities:
+        - "reasoning"
+        - "coding"
+      rate_limit: 120
+    - name: "palm-2"
+      provider: "google"
+      weight: 0.7
+      capabilities:
+        - "reasoning"
+        - "factual"
+      rate_limit: 100
+  retry_count: 5
+  timeout_seconds: 20  # Shorter timeout for production performance
+  api_key_rotation:
+    enabled: true
+    frequency: 604800  # Weekly rotation
+
+api:
+  host: "0.0.0.0"  # Allow external connections
+  port: 443  # HTTPS port
+  workers: 8
+  request_timeout: 30
+  rate_limit:
+    requests_per_minute: 300
+    burst: 50
+  ssl:
+    enabled: true
+    cert_path: "/etc/ev0x/ssl/cert.pem"
+    key_path: "/etc/ev0x/ssl/key.pem"
+  cors:
+    allowed_origins: ["https://api.example.com", "https://console.example.com"]
+    allowed_methods: ["GET", "POST"]
+  authentication:
+    required: true
+    method: "jwt"
+    key_rotation_days: 30
+
+consensus:
+  required_agreement: 0.75  # Higher agreement threshold for production
+  min_models: 5  # More models for better consensus quality
+  voting_mechanism: "quadratic"  # Advanced voting mechanism
+  historical_weighting: true  # Use historical performance for weighting
+  
+evolution:
+  generations: 10  # More generations for better results
+  population_size: 20
+  mutation_rate: 0.05  # Lower mutation for stability
+  crossover_rate: 0.7
+  evaluation_metrics:
+    - "accuracy"
+    - "latency"
+    - "resource_usage"
+    - "cost"
+
+bias:
+  detector:
+    enabled: true
+    sensitivity: 0.8
+    action_logging: true
+    categories:
+      - "political"
+      - "racial"
+      - "gender"
+      - "religious"
+      - "socioeconomic"
+      - "age"
+      - "disability"
+  neutralizer:
+    enabled: true
+    strength: 0.9
+    methods: ["reframing", "balancing", "diversification"]
+    fallback: "human_review"
+
+flare:
+  enabled: true
+  network: "mainnet"
+  contract_address: "0xPRODUCTION1234567890ABCDEF"
+  gas_limit: 5000000
+  verification_threshold: 0.9
+  api_endpoint: "https://api.flare.network/v1"
+  observation_submission:
+    enabled: true
+    frequency: 300  # 5 minutes
+    redundancy: 3  # Submit to multiple validators
+  rewards:
+    distribution_method: "shapley"
+    automatic_claim: true
+
+tee:
+  enabled: true
+  provider: "sgx"
+  attestation_required: true
+  attestation_service: "https://api.attestation.example.com/v1"
+  encryption:
+    algorithm: "AES-256-GCM"
+    key_rotation_interval: 43200  # 12 hours
+  memory_protection: true
+  secure_storage: true
+  hardware_requirements:
+    min_epc_size: "128MB"
+    trusted_boot: true
+  compliance:
+    gdpr: true
+    hipaa: false
+    confidential_computing_consortium: true
+

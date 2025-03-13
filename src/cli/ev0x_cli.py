@@ -10,7 +10,7 @@ to the appropriate functionality.
 import argparse
 import sys
 import os
-from typing import List, Optional, Dict, Any, Callable
+from typing import List, Dict, Callable
 
 
 # Initialize package structure to ensure imports work properly
@@ -28,10 +28,10 @@ def create_init_files():
 def handle_deploy(args: argparse.Namespace) -> int:
     """
     Deploy ev0x to different environments.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
@@ -39,12 +39,12 @@ def handle_deploy(args: argparse.Namespace) -> int:
         print("Error: No environment specified")
         print("Usage: ev0x-cli.py deploy [development|staging|production]")
         return 1
-        
+
     env = args.environment
     print(f"Deploying ev0x to {env} environment...")
-    
+
     # TODO: Implement actual deployment logic
-    
+
     print(f"Deployment to {env} completed successfully")
     return 0
 
@@ -52,10 +52,10 @@ def handle_deploy(args: argparse.Namespace) -> int:
 def handle_models(args: argparse.Namespace) -> int:
     """
     Manage AI models.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
@@ -63,9 +63,9 @@ def handle_models(args: argparse.Namespace) -> int:
         print("Error: No action specified")
         print("Usage: ev0x-cli.py models [list|add|remove|update]")
         return 1
-        
+
     action = args.action
-    
+
     if action == "list":
         print("Available models:")
         print("  - gpt-4")
@@ -93,17 +93,17 @@ def handle_models(args: argparse.Namespace) -> int:
     else:
         print(f"Unknown action: {action}")
         return 1
-        
+
     return 0
 
 
 def handle_monitor(args: argparse.Namespace) -> int:
     """
     Monitor system performance and health.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
@@ -115,22 +115,22 @@ def handle_monitor(args: argparse.Namespace) -> int:
         component = args.component
         print(f"Monitoring {component}...")
         # TODO: Implement component-specific monitoring
-    
+
     return 0
 
 
 def handle_consensus(args: argparse.Namespace) -> int:
     """
     Run and evaluate consensus algorithms.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
     action = args.action or "status"
-    
+
     if action == "run":
         print("Running consensus algorithm...")
         # TODO: Implement consensus algorithm execution
@@ -144,17 +144,17 @@ def handle_consensus(args: argparse.Namespace) -> int:
     else:
         print(f"Unknown action: {action}")
         return 1
-    
+
     return 0
 
 
 def handle_evolve(args: argparse.Namespace) -> int:
     """
     Trigger evolutionary processes on models.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
@@ -162,7 +162,7 @@ def handle_evolve(args: argparse.Namespace) -> int:
         print(f"Evolving model: {args.model}...")
     else:
         print("Evolving all models...")
-    
+
     print("Evolution process initiated")
     return 0
 
@@ -170,10 +170,10 @@ def handle_evolve(args: argparse.Namespace) -> int:
 def handle_integrate(args: argparse.Namespace) -> int:
     """
     Manage Flare ecosystem integrations.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
@@ -181,9 +181,9 @@ def handle_integrate(args: argparse.Namespace) -> int:
         print("Error: No action specified")
         print("Usage: ev0x-cli.py integrate [connect|disconnect|status]")
         return 1
-        
+
     action = args.action
-    
+
     if action == "connect":
         print("Connecting to Flare ecosystem...")
         # TODO: Implement connection logic
@@ -196,17 +196,17 @@ def handle_integrate(args: argparse.Namespace) -> int:
     else:
         print(f"Unknown action: {action}")
         return 1
-    
+
     return 0
 
 
 def handle_tee(args: argparse.Namespace) -> int:
     """
     Manage Trusted Execution Environment settings.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
@@ -214,9 +214,9 @@ def handle_tee(args: argparse.Namespace) -> int:
         print("Error: No action specified")
         print("Usage: ev0x-cli.py tee [enable|disable|status|verify]")
         return 1
-        
+
     action = args.action
-    
+
     if action == "enable":
         print("Enabling Trusted Execution Environment...")
         # TODO: Implement TEE enabling logic
@@ -233,14 +233,14 @@ def handle_tee(args: argparse.Namespace) -> int:
     else:
         print(f"Unknown action: {action}")
         return 1
-    
+
     return 0
 
 
 def setup_argparse() -> argparse.ArgumentParser:
     """
     Set up the argument parser for the CLI.
-    
+
     Returns:
         Configured ArgumentParser instance
     """
@@ -248,84 +248,84 @@ def setup_argparse() -> argparse.ArgumentParser:
         description="ev0x: Evolutionary Model Consensus System",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    
+
     # Main command subparsers
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    
+
     # Deploy command
     deploy_parser = subparsers.add_parser("deploy", help="Deploy ev0x to an environment")
     deploy_parser.add_argument("environment", choices=["development", "staging", "production"],
                                help="Target environment")
-    
+
     # Models command
     models_parser = subparsers.add_parser("models", help="Manage AI models")
     models_subparsers = models_parser.add_subparsers(dest="action", help="Models action")
-    
+
     # Models list
-    models_list_parser = models_subparsers.add_parser("list", help="List available models")
-    
+    models_subparsers.add_parser("list", help="List available models")
+
     # Models add
     models_add_parser = models_subparsers.add_parser("add", help="Add a new model")
     models_add_parser.add_argument("--name", required=True, help="Model name")
     models_add_parser.add_argument("--api-key", help="API key for the model")
     models_add_parser.add_argument("--endpoint", help="API endpoint for the model")
-    
+
     # Models remove
     models_remove_parser = models_subparsers.add_parser("remove", help="Remove a model")
     models_remove_parser.add_argument("--name", required=True, help="Model name")
-    
+
     # Models update
     models_update_parser = models_subparsers.add_parser("update", help="Update a model")
     models_update_parser.add_argument("--name", required=True, help="Model name")
     models_update_parser.add_argument("--api-key", help="New API key for the model")
     models_update_parser.add_argument("--endpoint", help="New API endpoint for the model")
-    
+
     # Monitor command
     monitor_parser = subparsers.add_parser("monitor", help="Monitor system performance and health")
-    monitor_parser.add_argument("component", nargs="?", 
-                               choices=["system", "consensus", "models", "api"],
-                               help="Component to monitor")
-    
+    monitor_parser.add_argument("component", nargs="?",
+                                choices=["system", "consensus", "models", "api"],
+                                help="Component to monitor")
+
     # Consensus command
     consensus_parser = subparsers.add_parser("consensus", help="Run and evaluate consensus algorithms")
-    consensus_parser.add_argument("action", nargs="?", 
-                                 choices=["run", "status", "evaluate"],
-                                 help="Consensus action")
-    
+    consensus_parser.add_argument("action", nargs="?",
+                                  choices=["run", "status", "evaluate"],
+                                  help="Consensus action")
+
     # Evolve command
     evolve_parser = subparsers.add_parser("evolve", help="Trigger evolutionary processes on models")
     evolve_parser.add_argument("--model", help="Specific model to evolve")
-    
+
     # Integrate command
     integrate_parser = subparsers.add_parser("integrate", help="Manage Flare ecosystem integrations")
-    integrate_parser.add_argument("action", choices=["connect", "disconnect", "status"], 
-                                 help="Integration action")
-    
+    integrate_parser.add_argument("action", choices=["connect", "disconnect", "status"],
+                                  help="Integration action")
+
     # TEE command
     tee_parser = subparsers.add_parser("tee", help="Manage Trusted Execution Environment settings")
-    tee_parser.add_argument("action", choices=["enable", "disable", "status", "verify"], 
-                           help="TEE action")
-    
+    tee_parser.add_argument("action", choices=["enable", "disable", "status", "verify"],
+                            help="TEE action")
+
     return parser
 
 
 def main(argv: List[str]) -> int:
     """
     Main entry point for the CLI.
-    
+
     Args:
         argv: Command-line arguments
-        
+
     Returns:
         Exit code (0 for success)
     """
     # Ensure __init__.py files exist
     create_init_files()
-    
+
     # Parse arguments
     parser = setup_argparse()
     args = parser.parse_args(argv[1:])
-    
+
     # Map commands to handlers
     command_handlers: Dict[str, Callable[[argparse.Namespace], int]] = {
         "deploy": handle_deploy,
@@ -336,12 +336,12 @@ def main(argv: List[str]) -> int:
         "integrate": handle_integrate,
         "tee": handle_tee,
     }
-    
+
     # Execute the appropriate handler based on the command
     if not args.command:
         parser.print_help()
         return 0
-        
+
     if args.command in command_handlers:
         return command_handlers[args.command](args)
     else:
@@ -352,4 +352,3 @@ def main(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
-

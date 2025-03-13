@@ -10,4 +10,3 @@ from src.evolution.selection import AdaptiveModelSelector
 from src.evolution.meta_intelligence import MetaIntelligence, ModelProfile
 
 __all__ = ['AdaptiveModelSelector', 'MetaIntelligence', 'ModelProfile']
-

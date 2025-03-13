@@ -1,0 +1,61 @@
+# EV0X System - Development Configuration
+# Extends the defaults.yml with development-specific settings
+
+system:
+  log_level: "debug"
+  data_dir: "./dev-data"
+
+models:
+  default_temperature: 0.9  # Higher temperature for more creative outputs in development
+  available_models:
+    - name: "gpt-3.5-turbo"
+      provider: "openai"
+      weight: 1.0
+      capabilities:
+        - "reasoning"
+        - "planning"
+    - name: "llama-2-13b"  # Smaller model for faster development
+      provider: "meta"
+      weight: 0.6
+      capabilities:
+        - "reasoning"
+        - "coding"
+  retry_count: 2
+  timeout_seconds: 60  # Longer timeout for debugging
+
+api:
+  host: "localhost"
+  port: 8080
+  workers: 2
+  rate_limit:
+    requests_per_minute: 1000  # Higher limit for development testing
+    burst: 50
+  debug: true
+  cors:
+    allowed_origins: ["http://localhost:3000", "*"]
+
+consensus:
+  required_agreement: 0.51  # Lower threshold for easier development
+  min_models: 2  # Fewer models needed for faster iteration
+  
+evolution:
+  generations: 3  # Fewer generations for faster development cycles
+  population_size: 5
+  
+bias:
+  detector:
+    sensitivity: 0.5  # Lower sensitivity for development
+  neutralizer:
+    enabled: true
+    strength: 0.6
+
+flare:
+  enabled: true
+  network: "testnet"
+  contract_address: "0xDEVELOPMENT1234567890ABCDEF"
+  use_mock: true  # Use mock implementation for local development
+  
+tee:
+  enabled: false  # Disabled for easier development
+  simulation_mode: true  # Simulate TEE for testing
+

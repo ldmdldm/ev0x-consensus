@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Any
 
+
 class ModelType(Enum):
     """Types of AI models supported by ev0x."""
     LLM = "llm"
@@ -11,11 +12,13 @@ class ModelType(Enum):
     AQA = "attributed_qa"
     CUSTOM = "custom"
 
+
 class ModelProvider(Enum):
     """AI model providers supported by ev0x."""
     GEMINI = "gemini"
     OPENROUTER = "openrouter"
     CUSTOM = "custom"
+
 
 @dataclass
 class ModelConfig:
@@ -29,7 +32,7 @@ class ModelConfig:
     parameters: Dict[str, Any] = None
     capabilities: List[str] = None
     enabled: bool = True
-    
+
     def to_dict(self):
         """Convert configuration to dictionary."""
         return {
@@ -41,6 +44,7 @@ class ModelConfig:
             "capabilities": self.capabilities,
             "enabled": self.enabled
         }
+
 
 # Default model configurations
 DEFAULT_MODELS = [
@@ -124,6 +128,7 @@ DEFAULT_MODELS = [
 # Alias for DEFAULT_MODELS to maintain compatibility with imports in main.py
 AVAILABLE_MODELS = DEFAULT_MODELS
 
+
 def get_model_config(model_name: str) -> Optional[ModelConfig]:
     """Get configuration for a specific model by name."""
     for model in DEFAULT_MODELS:
@@ -131,12 +136,13 @@ def get_model_config(model_name: str) -> Optional[ModelConfig]:
             return model
     return None
 
+
 def get_enabled_models() -> List[ModelConfig]:
     """Get all enabled models."""
     return [model for model in DEFAULT_MODELS if model.enabled]
 
+
 def get_models_by_capability(capability: str) -> List[ModelConfig]:
     """Get all models that have a specific capability."""
-    return [model for model in DEFAULT_MODELS 
+    return [model for model in DEFAULT_MODELS
             if model.enabled and capability in model.capabilities]
-
