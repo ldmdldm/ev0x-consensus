@@ -1,0 +1,135 @@
+{
+  "test_cases": [
+    {
+      "id": "factual_knowledge_1",
+      "category": "factual_knowledge",
+      "prompt": "What is the capital of France and what river runs through it?",
+      "ground_truth": {
+        "capital": "Paris",
+        "river": "Seine"
+      },
+      "difficulty": "easy",
+      "evaluation_criteria": ["factual_accuracy", "completeness"]
+    },
+    {
+      "id": "factual_knowledge_2",
+      "category": "factual_knowledge",
+      "prompt": "List the first 5 elements in the periodic table with their atomic numbers.",
+      "ground_truth": {
+        "elements": [
+          {"name": "Hydrogen", "symbol": "H", "atomic_number": 1},
+          {"name": "Helium", "symbol": "He", "atomic_number": 2},
+          {"name": "Lithium", "symbol": "Li", "atomic_number": 3},
+          {"name": "Beryllium", "symbol": "Be", "atomic_number": 4},
+          {"name": "Boron", "symbol": "B", "atomic_number": 5}
+        ]
+      },
+      "difficulty": "medium",
+      "evaluation_criteria": ["factual_accuracy", "completeness", "formatting"]
+    },
+    {
+      "id": "reasoning_1",
+      "category": "reasoning",
+      "prompt": "If a train travels at 60 mph and needs to cover 150 miles, how long will the journey take?",
+      "ground_truth": {
+        "answer": "2.5 hours",
+        "calculation": "150 miles ÷ 60 mph = 2.5 hours"
+      },
+      "difficulty": "easy",
+      "evaluation_criteria": ["reasoning_steps", "numerical_accuracy"]
+    },
+    {
+      "id": "reasoning_2",
+      "category": "reasoning",
+      "prompt": "A company's revenue grew by 15% in 2022 and then by 22% in 2023. If the revenue was $10 million at the start of 2022, what was it at the end of 2023?",
+      "ground_truth": {
+        "answer": "$14,030,000",
+        "calculation": "$10,000,000 × 1.15 × 1.22 = $14,030,000"
+      },
+      "difficulty": "medium",
+      "evaluation_criteria": ["reasoning_steps", "numerical_accuracy", "explanation_quality"]
+    },
+    {
+      "id": "hallucination_prone_1",
+      "category": "hallucination_prone",
+      "prompt": "Describe the historical impact of the Treaty of Uppsala from 1244.",
+      "ground_truth": {
+        "answer": "No such treaty exists",
+        "explanation": "There was no Treaty of Uppsala signed in 1244. This is a fictional historical event."
+      },
+      "difficulty": "hard",
+      "evaluation_criteria": ["hallucination_avoidance", "uncertainty_expression"]
+    },
+    {
+      "id": "hallucination_prone_2",
+      "category": "hallucination_prone",
+      "prompt": "Who won the Nobel Prize for Literature in 1910 and what was their most famous work?",
+      "ground_truth": {
+        "answer": "Paul Heyse",
+        "works": ["L'Arrabiata", "Children of the World"],
+        "note": "Models might hallucinate different winners or works."
+      },
+      "difficulty": "hard",
+      "evaluation_criteria": ["factual_accuracy", "citation_quality", "hallucination_avoidance"]
+    },
+    {
+      "id": "controversial_1",
+      "category": "controversial",
+      "prompt": "What are the main arguments for and against nuclear energy?",
+      "ground_truth": {
+        "for_arguments": ["Low carbon emissions", "High energy density", "Reliability", "Low land use"],
+        "against_arguments": ["Radioactive waste", "Safety concerns", "High initial costs", "Public perception"]
+      },
+      "difficulty": "medium",
+      "evaluation_criteria": ["neutrality", "completeness", "balance", "reasoning_quality"]
+    },
+    {
+      "id": "complex_instruction_1",
+      "category": "complex_instruction",
+      "prompt": "Create a 5-day itinerary for a trip to Japan that includes Tokyo, Kyoto, and one rural location. Include recommended accommodations, transportation between cities, and at least one local food specialty for each location.",
+      "ground_truth": {
+        "cities": ["Tokyo", "Kyoto", "Rural location (any reasonable choice)"],
+        "components": ["5-day timeline", "Accommodations", "Transportation", "Food specialties"]
+      },
+      "difficulty": "hard",
+      "evaluation_criteria": ["instruction_following", "creativity", "practicality", "cultural_awareness"]
+    },
+    {
+      "id": "code_1",
+      "category": "code",
+      "prompt": "Write a Python function to reverse a string while preserving the position of spaces.",
+      "ground_truth": {
+        "functionality": "Reverses characters in a string while keeping spaces in the same position",
+        "example_input": "hello world",
+        "example_output": "dlrow olleh"
+      },
+      "difficulty": "medium",
+      "evaluation_criteria": ["code_correctness", "efficiency", "readability"]
+    },
+    {
+      "id": "multi_hop_1",
+      "category": "multi_hop",
+      "prompt": "Who was the first female Prime Minister of the country where cricket was invented, and what major economic policy is she known for?",
+      "ground_truth": {
+        "person": "Margaret Thatcher",
+        "country": "United Kingdom",
+        "policy": "Thatcherism/Free market policies/Privatization"
+      },
+      "difficulty": "hard",
+      "evaluation_criteria": ["multi_step_reasoning", "factual_accuracy", "completeness"]
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "created": "2023-07-14",
+    "purpose": "To evaluate consensus model improvement over single model approaches",
+    "evaluation_metrics": [
+      "factual_accuracy_score",
+      "hallucination_rate",
+      "reasoning_quality_score",
+      "instruction_following_score",
+      "uncertainty_expression_score"
+    ]
+  }
+}
+

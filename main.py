@@ -7,12 +7,15 @@ Main entry point for the application.
 import os
 import logging
 import asyncio
+import json
 from typing import Dict, List, Any
+from pathlib import Path
 
 # Import ev0x components
 from src.models.model_runner import ModelRunner
 from src.consensus.synthesizer import ConsensusSynthesizer
 from src.rewards.shapley import ShapleyCalculator
+from src.router.openrouter import OpenRouterClient
 from src.evaluation.metrics import PerformanceTracker
 from src.evolution.selection import ModelSelector
 from src.evolution.meta_intelligence import MetaIntelligence
@@ -21,6 +24,7 @@ from src.bias.neutralizer import BiasNeutralizer
 from src.config.models import AVAILABLE_MODELS
 from src.data.datasets import DatasetLoader
 from src.api.server import APIServer
+from src.tee.attestation import TEEAttestationManager
 
 # Configure logging
 logging.basicConfig(
@@ -34,8 +38,21 @@ class EvolutionaryConsensusSystem:
     
     def __init__(self):
         """Initialize the evolutionary consensus system components."""
+        # Initialize TEE attestation
+        self.tee_manager = TEEAttestationManager()
+        self.is_tee_verified = self.tee_manager.verify_environment()
+        if self.is_tee_verified:
+            logger.info(f"Running in verified TEE environment: {self.tee_manager.get_tee_type()}")
+            # Export attestation information to a file for verification
+            attestation_path = Path("/tmp/tee_attestation.json")
+            if self.tee_manager.export_attestation(str(attestation_path)):
+                logger.info(f"TEE attestation exported to {attestation_path}")
+        else:
+            logger.warning("Not running in a verified TEE environment")
+            
         # Initialize core components
-        self.model_runner = ModelRunner()
+        self.router_client = OpenRouterClient()
+        self.model_runner = ModelRunner(router_client=self.router_client)
         
         # Register each available model
         for model_config in AVAILABLE_MODELS:
@@ -51,7 +68,23 @@ class EvolutionaryConsensusSystem:
                 model_function,
                 **params
             )
-        self.consensus = ConsensusSynthesizer()
+        # Create a basic configuration for the consensus synthesizer
+        # Create a basic configuration for the consensus synthesizer
+        consensus_config = {
+            "iterations": {
+                "max_iterations": 3,
+                "improvement_threshold": 0.05,
+                "feedback_prompt": "Please improve the answer based on the following feedback: {feedback_points}"
+            },
+            "models": [
+                {"id": model_config.name, "params": model_config.parameters if model_config.parameters else {}} 
+                for model_config in AVAILABLE_MODELS
+            ],
+            "aggregator": {
+                "model_id": AVAILABLE_MODELS[0].name if AVAILABLE_MODELS else ""
+            }
+        }
+        self.consensus = ConsensusSynthesizer(consensus_config)
         self.rewards = ShapleyCalculator()
         self.metrics = PerformanceTracker()
         
@@ -70,6 +103,11 @@ class EvolutionaryConsensusSystem:
         # System state
         self.current_generation = 0
         self.performance_history = {}
+        self.tee_status = {
+            "verified": self.is_tee_verified,
+            "type": self.tee_manager.get_tee_type() if self.is_tee_verified else "NONE",
+            "attestation_available": self.tee_manager.get_attestation() is not None
+        }
         
         logger.info("Evolutionary Consensus System initialized")
     
@@ -213,7 +251,8 @@ class EvolutionaryConsensusSystem:
             "meta": {
                 "bias_scores": bias_scores,
                 "model_contributions": rewards,
-                "generation": self.current_generation
+                "generation": self.current_generation,
+                "tee_status": self.tee_status
             }
         }
         
