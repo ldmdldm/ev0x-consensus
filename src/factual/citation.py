@@ -12,12 +12,13 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any, Union, TypeVar, cast
+from xml.etree.ElementTree import Element
 
 import numpy as np
 import requests
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
+from sklearn.metrics.pairwise import cosine_similarity  # type: ignore
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -148,6 +149,73 @@ class Citation:
             date_text = f" ({self.publication_date.year})"
 
         return f'"{self.title}" by {author_text}{date_text}. {self.source_type.value.upper()} ID: {self.source_id}'
+class VerifiedOutput:
+    """Class representing the result of citation verification.
+    
+    VerifiedOutput stores the original output text, the verified version of the output,
+    a list of supporting citations, and an overall confidence score for the verification.
+    """
+    
+    def __init__(
+        self,
+        original_output: str,
+        verified_output: str,
+        citations: List[Citation],
+        overall_confidence: float
+    ):
+        """Initialize a VerifiedOutput object.
+        
+        Args:
+            original_output: The original, unverified output text
+            verified_output: The verified version of the output with citations
+            citations: List of Citation objects supporting the output
+            overall_confidence: Overall confidence score (0.0-1.0) for the verification
+        """
+        self.original_output = original_output
+        self.verified_output = verified_output
+        self.citations = citations
+        self.overall_confidence = overall_confidence
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert VerifiedOutput object to a dictionary.
+        
+        Returns:
+            Dictionary representation of the VerifiedOutput
+        """
+        return {
+            "original_output": self.original_output,
+            "verified_output": self.verified_output,
+            "citations": [citation.to_dict() for citation in self.citations],
+            "overall_confidence": self.overall_confidence,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'VerifiedOutput':
+        """Create a VerifiedOutput object from a dictionary.
+        
+        Args:
+            data: Dictionary containing verified output data
+        
+        Returns:
+            A new VerifiedOutput object
+        """
+        citations = [Citation.from_dict(citation_data) for citation_data in data.get("citations", [])]
+        
+        return cls(
+            original_output=data["original_output"],
+            verified_output=data["verified_output"],
+            citations=citations,
+            overall_confidence=data.get("overall_confidence", 0.0),
+        )
+    
+    def __str__(self) -> str:
+        """Return a string representation of the VerifiedOutput.
+        
+        Returns:
+            String representation including confidence and citation count
+        """
+        return (f"Verified output with {len(self.citations)} citations "
+                f"(confidence: {self.overall_confidence:.2f})")
 
 
 class CitationVerifier:
@@ -160,7 +228,7 @@ class CitationVerifier:
             cache_enabled: Whether to cache verification results
         """
         self.cache_enabled = cache_enabled
-        self.cache = {}  # Simple in-memory cache
+        self.cache: Dict[str, Tuple[bool, List[Citation]]] = {}  # Simple in-memory cache
         self.vectorizer = TfidfVectorizer(stop_words='english')
 
     def verify_claim(self,
@@ -256,6 +324,14 @@ class CitationVerifier:
 
         # Cache the result if enabled
         if self.cache_enabled:
+            is_verified = False  # Default value
+            if all_citations:
+                # Use the verification status from above conditionals
+                if (all_citations[0].relevance_score > 0.5 or 
+                    (len(all_citations) >= 2 and
+                     all_citations[0].relevance_score > 0.4 and
+                     all_citations[1].relevance_score > 0.35)):
+                    is_verified = True
             self.cache[claim] = (is_verified, all_citations)
 
         return is_verified, all_citations
@@ -404,7 +480,9 @@ class CitationVerifier:
                 'User-Agent': 'ev0x-citation-verifier/1.0 (https://github.com/flare-research/flare-ai-consensus)'
             }
 
-            response = requests.get(base_url, params=params, headers=headers, timeout=10)
+            # Cast params to Dict[str, str] for requests.get
+            str_params: Dict[str, str] = {k: str(v) for k, v in params.items()}
+            response = requests.get(url=base_url, params=str_params, headers=headers, timeout=10)
 
             # Check for various HTTP status codes
             if response.status_code == 429:
@@ -431,7 +509,7 @@ class CitationVerifier:
 
             # Check if we got any results
             total_results_elem = root.find('.//opensearch:totalResults', ns)
-            if total_results_elem is not None:
+            if total_results_elem is not None and total_results_elem.text is not None:
                 total_results = int(total_results_elem.text)
                 if total_results == 0:
                     logger.info("No arXiv results found for query.")
@@ -444,15 +522,12 @@ class CitationVerifier:
             for entry in root.findall('.//atom:entry', ns):
                 try:
                     # Skip the first entry if it's the OpenSearch Description
-                    if entry.find(
-                            './atom:title',
-                            ns) is not None and entry.find(
-                            './atom:title',
-                            ns).text == 'ArXiv Query: search_query=all:':
-                        continue
-
                     title_elem = entry.find('./atom:title', ns)
-                    title = title_elem.text.strip() if title_elem is not None and title_elem.text else "Unknown title"
+                    if (title_elem is not None and 
+                        title_elem.text is not None and 
+                        title_elem.text == 'ArXiv Query: search_query=all:'):
+                        continue
+                    title = title_elem.text.strip() if title_elem is not None and title_elem.text is not None else "Unknown title"
 
                     # Extract arXiv ID
                     id_elem = entry.find('./atom:id', ns)
@@ -460,7 +535,7 @@ class CitationVerifier:
                     if id_elem is not None and id_elem.text:
                         id_text = id_elem.text
                         # Improve regex to handle more arXiv ID formats
-                        arxiv_id_match = re.search(r'arxiv\.org/abs/([^/\s]+)', id_text)
+                        arxiv_id_match = re.search(r'arxiv\.org/abs/([^/\s]+)', id_text) if id_text else None
                         if arxiv_id_match:
                             arxiv_id = arxiv_id_match.group(1)
                         else:
@@ -511,8 +586,7 @@ class CitationVerifier:
                     # Extract abstract with better text cleaning
                     summary_elem = entry.find('./atom:summary', ns)
                     abstract = None
-                    if summary_elem is not None and summary_elem.text:
-                        # Clean up abstract text - normalize whitespace, remove any XML entities
+                    if summary_elem is not None and summary_elem.text is not None:
                         abstract = re.sub(r'\s+', ' ', summary_elem.text).strip()
 
                     # Extract DOI with improved parsing
@@ -520,7 +594,7 @@ class CitationVerifier:
                     for link_elem in entry.findall('./atom:link', ns):
                         if link_elem.get('title') == 'doi' or link_elem.get(
                                 'rel') == 'related' and 'doi.org' in link_elem.get('href', ''):
-                            doi_url = link_elem.get('href')
+                            doi_url = link_elem.get('href', '')
                             doi_match = re.search(r'doi\.org/(.+)$', doi_url)
                             if doi_match:
                                 doi = doi_match.group(1)
@@ -529,8 +603,9 @@ class CitationVerifier:
                     url = None
                     for link_elem in entry.findall('./atom:link', ns):
                         # Primary URL is usually the one with rel='alternate'
-                        if link_elem.get('rel') == 'alternate' or 'arxiv.org/abs/' in link_elem.get('href', ''):
-                            url = link_elem.get('href')
+                        href = link_elem.get('href', '')
+                        if link_elem.get('rel') == 'alternate' or 'arxiv.org/abs/' in href:
+                            url = href
                             break
 
                     # If we couldn't find the alternate link, use the id URL
@@ -628,7 +703,9 @@ class CitationVerifier:
             # Add rate limiting compliance
             time.sleep(0.3)  # Sleep to comply with NCBI's rate limit recommendations
 
-            search_response = requests.get(esearch_url, params=esearch_params, timeout=10)
+            # Cast params to Dict[str, str] for requests.get
+            str_esearch_params: Dict[str, str] = {k: str(v) for k, v in esearch_params.items()}
+            search_response = requests.get(url=esearch_url, params=str_esearch_params, timeout=10)
 
             # Check specific PubMed error codes
             if search_response.status_code == 429:
@@ -675,8 +752,8 @@ class CitationVerifier:
             if webenv and query_key:
                 efetch_params.update({
                     "webenv": webenv,
+                    "retmax": str(max_results),
                     "query_key": query_key,
-                    "retmax": max_results,
                 })
             else:
                 efetch_params["id"] = ",".join(pmids)
@@ -684,7 +761,9 @@ class CitationVerifier:
             # Add a slight delay to respect rate limits
             time.sleep(0.3)
 
-            fetch_response = requests.get(efetch_url, params=efetch_params, timeout=15)
+            # Cast params to Dict[str, str] for requests.get
+            str_efetch_params: Dict[str, str] = {k: str(v) for k, v in efetch_params.items()}
+            fetch_response = requests.get(url=efetch_url, params=str_efetch_params, timeout=15)
             fetch_response.raise_for_status()
 
             # Parse XML response with better error handling
@@ -715,7 +794,7 @@ class CitationVerifier:
                         article.find(".//ArticleId[@IdType='pubmed']") or
                         article.find(".//p:ArticleId[@IdType='pubmed']", ns)
                     )
-                    pmid = pmid_elem.text if pmid_elem is not None else "unknown"
+                    pmid = pmid_elem.text if pmid_elem is not None and pmid_elem.text is not None else "unknown"
 
                     # Extract title with better text handling for XML entities and formatting
                     title_elem = article.find(".//ArticleTitle") or article.find(".//p:ArticleTitle", ns)
@@ -784,36 +863,44 @@ class CitationVerifier:
                     publication_date = None
                     if pub_date is not None:
                         year_elem = pub_date.find(".//Year")
+                        year_elem = pub_date.find(".//Year")
                         month_elem = pub_date.find(".//Month")
                         day_elem = pub_date.find(".//Day")
-
-                        year = year_elem.text if year_elem is not None else None
-                        month = month_elem.text if month_elem is not None else "1"
-                        day = day_elem.text if day_elem is not None else "1"
-
-                        # Convert month name to number if needed
+                        
+                        # Extract text values with proper null checks
+                        year = year_elem.text if year_elem is not None and year_elem.text is not None else None
+                        month_text = month_elem.text if month_elem is not None and month_elem.text is not None else "1"
+                        day = day_elem.text if day_elem is not None and day_elem.text is not None else "1"
+                        
+                        # Parse the date in a single try-except block to handle all potential errors
                         try:
-                            # Check if month is a name rather than a number
-                            if month and month.isalpha():
-                                # Convert month name to number
-                                month_names = {
-                                    'jan': '1', 'feb': '2', 'mar': '3', 'apr': '4',
-                                    'may': '5', 'jun': '6', 'jul': '7', 'aug': '8',
-                                    'sep': '9', 'oct': '10', 'nov': '11', 'dec': '12'
-                                }
-                                month_abbr = month.lower()[:3]
-                                if month_abbr in month_names:
-                                    month = month_names[month_abbr]
-
-                            # Create datetime object if year is available
+                            # Only attempt to parse if we have a year
                             if year:
-                                publication_date = datetime(int(year), int(month), int(day))
-                        except ValueError:
-                            logger.warning(f"Could not parse PubMed date: {year}-{month}-{day}")
+                                # Handle month name conversion if needed
+                                month = month_text
+                                if month and month.isalpha():
+                                    # Convert month name to number
+                                    month_names = {
+                                        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
+                                        'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+                                        'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+                                    }
+                                    month_abbr = month.lower()[:3]
+                                    month = str(month_names.get(month_abbr, 1))
+                                
+                                # Convert strings to integers
+                                year_int = int(year)
+                                month_int = int(month)
+                                day_int = int(day)
+                                
+                                # Create datetime object
+                                publication_date = datetime(year_int, month_int, day_int)
+                        except (ValueError, TypeError, KeyError) as e:
+                            logger.warning(f"Could not parse PubMed date: {year}-{month_text}-{day}. Error: {str(e)}")
 
                     # Extract abstract
                     abstract_elem = article.find(".//AbstractText")
-                    abstract = abstract_elem.text if abstract_elem is not None else None
+                    abstract = abstract_elem.text if abstract_elem is not None and abstract_elem.text is not None else None
 
                     # Extract DOI
                     doi = None
@@ -1073,8 +1160,9 @@ class CitationVerifier:
 
             # Calculate cosine similarity for the original approach
             # Calculate cosine similarity for the original approach
+            original_claim_vector = original_tfidf_matrix[0:1]
             original_citation_vectors = original_tfidf_matrix[1:]
-            original_similarities = cosine_similarity(focused_claim_vector, original_citation_vectors).flatten()
+            original_similarities = cosine_similarity(original_claim_vector, original_citation_vectors).flatten()
             # Check for exact technical term matches to apply boosting
             # Extract technical terms from the claim
             technical_terms = []
@@ -1241,7 +1329,7 @@ class CitationVerifier:
         logger.info(f"Extracted {len(claims)} claims from text")
         return claims
 
-    def verify_text(self, text: str, source_types: Optional[List[SourceType]] = None) -> Dict[str, Any]:
+    def verify_text(self, text: str, source_types: Optional[List[SourceType]] = None) -> VerifiedOutput:
         """Verify all claims in a text and provide verification results.
 
         Args:
@@ -1249,13 +1337,15 @@ class CitationVerifier:
             source_types: List of source types to check (default: all)
 
         Returns:
-            Dictionary with verification results
+            VerifiedOutput with verification results
         """
         claims = self.extract_claims(text)
 
         verified_claims = 0
         total_citations = 0
+        all_citations = []
         claim_results = []
+        verified_output = text
 
         start_time = time.time()
 
@@ -1266,6 +1356,7 @@ class CitationVerifier:
                 verified_claims += 1
 
             total_citations += len(citations)
+            all_citations.extend(citations)
 
             claim_results.append({
                 "claim": claim,
@@ -1273,16 +1364,23 @@ class CitationVerifier:
                 "citations": [citation.to_dict() for citation in citations[:3]]  # Top 3 citations
             })
 
-        elapsed_time = time.time() - start_time
+            # Add citation markers to the output text if verified
+            if is_verified and citations:
+                citation_marker = f" [{citations[0].source_type.value}:{citations[0].source_id}]"
+                verified_output = verified_output.replace(claim, f"{claim}{citation_marker}")
 
-        return {
-            "total_claims": len(claims),
-            "verified_claims": verified_claims,
-            "verification_rate": verified_claims / len(claims) if claims else 0,
-            "total_citations": total_citations,
-            "processing_time_seconds": elapsed_time,
-            "claim_results": claim_results,
-        }
+        elapsed_time = time.time() - start_time
+        
+        # Calculate overall confidence score based on verification rate
+        overall_confidence = float(verified_claims) / len(claims) if claims else 0.0
+
+        # Create and return a VerifiedOutput object
+        return VerifiedOutput(
+            original_output=text,
+            verified_output=verified_output,
+            citations=all_citations,
+            overall_confidence=overall_confidence
+        )
 
     def get_citation_format(self, citation: Citation, format_type: str = "apa") -> str:
         """Format a citation according to standard citation styles.
@@ -1367,4 +1465,12 @@ def verify_citations(text: str, source_types: Optional[List[SourceType]] = None)
         - claim_results: Detailed results for each claim
     """
     verifier = CitationVerifier(cache_enabled=True)
-    return verifier.verify_text(text, source_types)
+    verified_output = verifier.verify_text(text, source_types)
+    
+    # Convert VerifiedOutput to the expected dictionary format
+    return {
+        "original_output": verified_output.original_output,
+        "verified_output": verified_output.verified_output,
+        "citations": [citation.to_dict() for citation in verified_output.citations],
+        "overall_confidence": verified_output.overall_confidence
+    }
