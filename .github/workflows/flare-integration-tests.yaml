@@ -1,0 +1,127 @@
+name: Flare Network Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/flare_integrations/**'
+      - 'tests/flare/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/flare_integrations/**'
+      - 'tests/flare/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to run tests against'
+        required: true
+        default: 'testnet'
+        type: choice
+        options:
+          - testnet
+          - mainnet
+
+env:
+  FLARE_RPC_ENDPOINT: ${{ secrets.FLARE_RPC_ENDPOINT }}
+  FLARE_API_KEY: ${{ secrets.FLARE_API_KEY }}
+  FTSO_CONTRACT_ADDRESS: "0x1000000000000000000000000000000000000003"
+  STATECONNECTOR_ADDRESS: "0x1000000000000000000000000000000000000001"
+  DEX_CONTRACT_ADDRESS: "0x0123456789abcdef0123456789abcdef01234567"
+
+jobs:
+  flare-network-tests:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'testnet' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r src/flare_integrations/requirements.txt
+          
+      - name: Configure Flare Network endpoints
+        run: |
+          echo "Configuring for ${{ github.event.inputs.environment || 'testnet' }} environment"
+          if [ "${{ github.event.inputs.environment }}" == "mainnet" ]; then
+            echo "Using Flare mainnet configuration"
+            echo "NETWORK_ID=14" >> $GITHUB_ENV
+          else
+            echo "Using Flare testnet (Coston) configuration"
+            echo "NETWORK_ID=16" >> $GITHUB_ENV
+          fi
+      
+      - name: Run FTSO integration tests
+        run: |
+          pytest tests/flare/test_ftso_integration.py -v
+          
+      - name: Run StateConnector tests
+        run: |
+          pytest tests/flare/test_state_connector.py -v
+          
+      - name: Run DEX integration tests
+        run: |
+          pytest tests/flare/test_dex_integration.py -v
+          
+      - name: Run validator consensus tests
+        run: |
+          pytest tests/flare/test_validator_consensus.py -v
+          
+      - name: Verify blockchain interactions
+        run: |
+          python src/benchmarks/run_benchmark.py --blockchain-only --report-format=junit --output-dir=./test-results/
+          
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Flare Integration Test Results
+          path: ./test-results/*.xml
+          reporter: java-junit
+          
+  integration-with-main-pipeline:
+    needs: flare-network-tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run integration tests with main consensus system
+        run: |
+          pytest tests/test_flare_consensus_integration.py -v
+          
+      - name: Verify end-to-end flow
+        run: |
+          python main.py --test-mode --with-flare-network
+          
+      - name: Generate integration report
+        run: |
+          python src/tools/generate_integration_report.py --flare-network
+          
+      - name: Upload integration report
+        uses: actions/upload-artifact@v3
+        with:
+          name: flare-integration-report
+          path: ./reports/flare_integration_report.pdf
+
