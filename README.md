@@ -4,6 +4,31 @@
 
 Ev0x implements a novel consensus mechanism for large language models (LLMs) called **Evolutionary Model Consensus (EMC)**. This project extends the theoretical foundations of Consensus Learning (CL) introduced in [arXiv:2402.16157](https://arxiv.org/abs/2402.16157) and adapts it specifically for LLMs. Our approach synthesizes outputs from multiple independent models, iteratively refining responses through an evolutionary feedback loop to achieve higher accuracy, reduced hallucinations, and improved factuality compared to individual model outputs. This research addresses a critical challenge in the Flare AI Consensus hackathon: creating verifiable, trustworthy AI systems with built-in fact verification mechanisms.
 
+# ev0x: Evolutionary Model Consensus Mechanism
+
+![ev0x Logo](docs/images/logo.png)
+
+## Overview
+
+ev0x is a self-adapting AI system that runs multiple models simultaneously, compares their outputs, and evolves to improve decision making through consensus. It implements a novel approach to AI model orchestration where multiple models compete, collaborate, and evolve to provide more reliable, accurate, and unbiased results than any single model could achieve.
+
+The system continuously evaluates model performance, distributes rewards using Shapley values, and adapts its weighting mechanisms to optimize for accuracy and diversity of thought.
+
+This comprehensive evolutionary AI system creates a "Model DNA" profile for each AI model, tracks its performance evolution over time, and uses genetic algorithm principles to evolve the model population:
+- Models with strong performance "reproduce" by creating variants
+- Underperforming models are "retired" from the active population
+- "Mutations" introduce novel approaches to maintain diversity
+
+## Ev0x Features
+
+- **Evolutionary Model Consensus**: Self-adapting AI models that compete and evolve
+- **Adaptive Model Selection**: AI models automatically ranked and selected based on performance
+- **Meta-Intelligence Layer**: Creates meta-models that learn how different AI models think
+- **Bias Neutralization Protocol**: Real-time bias detection and correction across models
+- **Transparent Performance Tracking**: Complete visibility into model performance metrics
+- **Fair Reward Distribution**: Uses Shapley values to calculate fair rewards for model contributions
+- **TEE Security**: Runs in Trusted Execution Environments for data privacy and integrity
+
 ## 1. Theoretical Foundation
 
 ### 1.1 From Byzantine Fault Tolerance to AI Consensus
@@ -232,7 +257,7 @@ This approach directly addresses the core challenges of the Flare AI Consensus h
 3. Ensuring secure execution in trusted environments
 4. Delivering transparent and explainable results
 
-We believe that Evolutionary Model Consensus represents a promising direction for addressing key challenges in AI safety, trustworthiness, and factuality.
+We believe that Evolutionary Model Consensus represents a promising direction for addressing key challenges in AI safety, trustworthiness and factuality.
 
 ## References
 
@@ -244,31 +269,6 @@ We believe that Evolutionary Model Consensus represents a promising direction fo
 6. Irving, G., Christiano, P., & Amodei, D. (2018). AI safety via debate. arXiv preprint arXiv:1805.00899.
 7. Wooldridge, M. (2009). An Introduction to MultiAgent Systems. John Wiley & Sons.
 8. Bubeck, S., Chandrasekaran, V., Eldan, R., Gehrke, J., Horvitz, E., Kamar, E., ... & Zhang, Y. (2023). Sparks of artificial general intelligence: Early experiments with GPT-4. arXiv preprint arXiv:2303.12712.
-
-# ev0x: Evolutionary Model Consensus Mechanism
-
-![ev0x Logo](docs/images/logo.png)
-
-## Overview
-
-ev0x is a self-adapting AI system that runs multiple models simultaneously, compares their outputs, and evolves to improve decision making through consensus. It implements a novel approach to AI model orchestration where multiple models compete, collaborate, and evolve to provide more reliable, accurate, and unbiased results than any single model could achieve.
-
-The system continuously evaluates model performance, distributes rewards using Shapley values, and adapts its weighting mechanisms to optimize for accuracy and diversity of thought.
-
-This comprehensive evolutionary AI system creates a "Model DNA" profile for each AI model, tracks its performance evolution over time, and uses genetic algorithm principles to evolve the model population:
-- Models with strong performance "reproduce" by creating variants
-- Underperforming models are "retired" from the active population
-- "Mutations" introduce novel approaches to maintain diversity
-
-## Key Features
-
-- **Evolutionary Model Consensus**: Self-adapting AI models that compete and evolve
-- **Adaptive Model Selection**: AI models automatically ranked and selected based on performance
-- **Meta-Intelligence Layer**: Creates meta-models that learn how different AI models think
-- **Bias Neutralization Protocol**: Real-time bias detection and correction across models
-- **Transparent Performance Tracking**: Complete visibility into model performance metrics
-- **Fair Reward Distribution**: Uses Shapley values to calculate fair rewards for model contributions
-- **TEE Security**: Runs in Trusted Execution Environments for data privacy and integrity
 
 ## Technical Architecture
 
@@ -873,9 +873,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Flare Network for blockchain integration capabilities
 - The open source community for various tools and libraries
 
-## New Features for Flare AI Hackathon
+## New Features 
 
-We've enhanced the ev0x system with additional features to improve AI consensus quality and reliability:
+We've developed the ev0x system with additional features to improve AI consensus quality and reliability:
 
 ### 1. Factual Correctness with Citations/Sources
 
