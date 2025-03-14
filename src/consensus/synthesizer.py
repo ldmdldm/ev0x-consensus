@@ -6,8 +6,10 @@ confidence scoring, hallucination detection, and historical performance-based we
 import json
 import logging
 import re
+import difflib
 import numpy as np
-from typing import Dict, List, Any, Callable, Optional, Tuple, Set
+from typing import Dict, List, Optional, Any, Union, TypeVar, Callable
+import numpy.typing as npt
 
 
 class Synthesizer:
@@ -42,7 +44,7 @@ class Synthesizer:
         # Return the most common output
         return counter.most_common(1)[0][0]
 
-    def _weighted_average(self, outputs: List[Any], weights: List[float] = None, **kwargs) -> Any:
+    def _weighted_average(self, outputs: List[Any], weights: Optional[List[float]] = None, **kwargs) -> Any:
         """
         Weighted average of numerical outputs.
 
@@ -236,7 +238,7 @@ class ConsensusSynthesizer:
                 self.citation_verification["enabled"] = False
 
     def synthesize(self, model_outputs: Dict[str, Dict[str, Any]],
-                   output_type: str = None) -> Dict[str, Any]:
+                   output_type: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate a consensus result from multiple model outputs.
         Enhanced with multi-step validation pipeline, hallucination detection,
@@ -323,7 +325,7 @@ class ConsensusSynthesizer:
         })
 
         return result
-    def _text_consensus(self, outputs: Dict[str, Any], weights: Dict[str, float] = None) -> Dict[str, Any]:
+    def _text_consensus(self, outputs: Dict[str, Any], weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """
         Generate consensus for text outputs using similarity measures.
         Enhanced with weighted similarity calculations.
@@ -336,7 +338,7 @@ class ConsensusSynthesizer:
             Dictionary with consensus text and confidence score
         """
         from collections import Counter
-        import difflib
+        # difflib is already imported at the top level
         
         # Initialize weights if not provided
         if not weights:
@@ -350,8 +352,6 @@ class ConsensusSynthesizer:
             norm_weights = {k: 1.0/len(outputs) for k in outputs}
 
         texts = list(outputs.values())
-        model_ids = list(outputs.keys())
-
         # For exact matches, use weighted majority voting
         counter = Counter(texts)
         most_common = counter.most_common()
@@ -380,7 +380,7 @@ class ConsensusSynthesizer:
             
             # Calculate weighted similarity score for each text
             for model_id, text in outputs.items():
-                weighted_sim_score = 0
+                weighted_sim_score: float = 0.0
                 total_weight = 0
                 
                 for other_model, other_text in outputs.items():
@@ -428,7 +428,7 @@ class ConsensusSynthesizer:
         }
 
 
-    def _structured_consensus(self, outputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _structured_consensus(self, outputs: Dict[str, Any], weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """
         Generate consensus for structured data (dictionaries or lists).
 
@@ -445,7 +445,7 @@ class ConsensusSynthesizer:
                        for model, output in outputs.items()}
 
         # Get text consensus using the string representation
-        text_result = self._text_consensus(str_outputs)
+        text_result = self._text_consensus(str_outputs, weights)
 
         # Convert consensus back to structured data
         try:
@@ -459,7 +459,7 @@ class ConsensusSynthesizer:
             # Fallback if conversion fails
             return text_result
 
-    def _numeric_consensus(self, outputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _numeric_consensus(self, outputs: Dict[str, Any], weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """
         Generate consensus for numeric outputs.
 
@@ -469,7 +469,6 @@ class ConsensusSynthesizer:
         Returns:
             Dictionary with consensus value and confidence score
         """
-        import numpy as np
         import math
 
         values = list(outputs.values())
@@ -483,8 +482,8 @@ class ConsensusSynthesizer:
                 return self._text_consensus(outputs)
 
         # Calculate mean and standard deviation
-        mean_val = np.mean(values)
-        std_val = np.std(values) if len(values) > 1 else 0
+        mean_val = np.mean(values)  # type: ignore[arg-type]
+        std_val = np.std(values) if len(values) > 1 else 0  # type: ignore[arg-type]
 
         # Calculate confidence based on coefficient of variation
         if mean_val != 0:
@@ -500,7 +499,7 @@ class ConsensusSynthesizer:
             "std_deviation": std_val
         }
 
-    def _classification_consensus(self, outputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _classification_consensus(self, outputs: Dict[str, str], weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """
         Generate consensus for classification outputs.
 
@@ -563,13 +562,12 @@ class ConsensusSynthesizer:
 
     def _analyze_text_disagreements(self, outputs: Dict[str, str]) -> Dict[str, Any]:
         """Analyze disagreements between text outputs."""
-        import difflib
-        import numpy as np
+        # difflib is already imported at the top level
 
         models = list(outputs.keys())
 
         # Calculate pairwise similarities
-        similarity_matrix = np.zeros((len(models), len(models)))
+        similarity_matrix = np.zeros((len(models), len(models)))  # type: ignore[arg-type]
 
         for i, (model1, text1) in enumerate(outputs.items()):
             for j, (model2, text2) in enumerate(outputs.items()):
@@ -578,14 +576,14 @@ class ConsensusSynthesizer:
                     similarity_matrix[i, j] = similarity
 
         # Calculate average similarity for each model
-        avg_similarities = np.mean(similarity_matrix, axis=1)
+        avg_similarities = np.mean(similarity_matrix, axis=1)  # type: ignore[arg-type]
 
         # Identify outliers (models with low avg similarity)
-        threshold = np.mean(avg_similarities) - np.std(avg_similarities)
+        threshold = np.mean(avg_similarities) - np.std(avg_similarities)  # type: ignore[arg-type]
         outliers = [models[i] for i, sim in enumerate(avg_similarities) if sim < threshold]
 
         return {
-            "agreement_score": np.mean(similarity_matrix),
+            "agreement_score": np.mean(similarity_matrix),  # type: ignore[arg-type]
             "outlier_models": outliers,
             "pairwise_similarities": {
                 f"{models[i]}-{models[j]}": similarity_matrix[i, j]
@@ -606,16 +604,15 @@ class ConsensusSynthesizer:
 
     def _analyze_numeric_disagreements(self, outputs: Dict[str, float]) -> Dict[str, Any]:
         """Analyze disagreements between numeric outputs."""
-        import numpy as np
 
         values = list(outputs.values())
         models = list(outputs.keys())
 
-        mean_val = np.mean(values)
-        std_val = np.std(values)
+        mean_val = np.mean(values)  # type: ignore[arg-type]
+        std_val = np.std(values)  # type: ignore[arg-type]
 
         # Identify outliers (values more than 2 std dev from mean)
-        z_scores = np.abs((values - mean_val) / std_val) if std_val > 0 else np.zeros(len(values))
+        z_scores = np.abs((values - mean_val) / std_val) if std_val > 0 else np.zeros(len(values))  # type: ignore[arg-type, no-any-return]
         outliers = [models[i] for i, z in enumerate(z_scores) if z > 2]
 
         return {
@@ -877,7 +874,7 @@ class ConsensusSynthesizer:
 
                 model_outputs[model_id] = {
                     "status": "success" if response else "error",
-                    "output": response.get("text", "") if response else ""
+                    "output": response.get("text", "")  # type: ignore[attr-defined]
                 }
 
             # Generate consensus with iterations
@@ -923,7 +920,7 @@ class ConsensusSynthesizer:
 
                 model_outputs[model_id] = {
                     "status": "success" if response else "error",
-                    "output": response.get("text", "") if response else ""
+                    "output": response.get("text", "") if response else ""  # type: ignore[attr-defined]
                 }
 
             # Extract the prompt from the last message
@@ -1238,8 +1235,7 @@ class ConsensusSynthesizer:
             return {}
             
         # Find consistent facts across outputs
-        fact_consistency = {}
-        
+        # Find consistent facts across outputs
         # Extract factual statements
         # This is a simplified approach - in production, use NLP to extract subject-predicate-object triples
         for model_id, text in text_outputs.items():
@@ -1253,7 +1249,7 @@ class ConsensusSynthesizer:
                 continue
                 
             # Compare with other model outputs for consistency
-            consistent_facts = 0
+            consistent_facts = 0.0
             total_facts = len(sentences)
             
             for sentence in sentences:
@@ -1325,7 +1321,7 @@ class ConsensusSynthesizer:
                 }
                 
             # Calculate similarity score based on output type
-            similarity_score = 0
+            similarity_score = 0.0
             
             if output_type == ModelOutputType.TEXT and isinstance(model_output, str) and isinstance(consensus_output, str):
                 # Text similarity
@@ -1337,19 +1333,22 @@ class ConsensusSynthesizer:
                     model_json = json.dumps(model_output, sort_keys=True)
                     consensus_json = json.dumps(consensus_output, sort_keys=True)
                     similarity_score = difflib.SequenceMatcher(None, model_json, consensus_json).ratio()
-                except:
+                except Exception:
                     similarity_score = 0
             elif output_type == ModelOutputType.NUMERIC and isinstance(model_output, (int, float)) and isinstance(consensus_output, (int, float)):
+                # Convert to float to avoid int/float type mismatches
+                model_output_float = float(model_output)
+                consensus_output_float = float(consensus_output)
                 # Numeric similarity based on relative difference
                 max_val = max(abs(model_output), abs(consensus_output))
                 if max_val > 0:
-                    diff = abs(model_output - consensus_output) / max_val
+                    diff = abs(model_output_float - consensus_output_float) / max_val
                     similarity_score = max(0, 1 - diff)
-                else:
-                    similarity_score = 1 if model_output == consensus_output else 0
+                    similarity_score = 1.0 if model_output == consensus_output else 0.0
+                    similarity_score = 1.0 if model_output == consensus_output else 0.0  # type: ignore[comparison-overlap]
             elif output_type == ModelOutputType.CLASSIFICATION:
                 # Classification similarity - exact match only
-                similarity_score = 1.0 if model_output == consensus_output else 0.0
+                similarity_score = 1.0 if model_output == consensus_output else 0.0  # type: ignore[comparison-overlap]
                 
             # Apply confidence weighting if available
             confidence_weight = model_confidences.get(model_id, 0.5) if model_confidences else 0.5
@@ -1419,4 +1418,9 @@ class ConsensusSynthesizer:
                     models_with_type[model_id] = type_score
                     
             # Sort by score and return top N
-            return sorted(models_with_type.keys(), 
+            return sorted(models_with_type.keys(), key=lambda x: models_with_type[x], reverse=True)[:top_n]  # type: ignore[no-any-return]
+        else:
+            # Get models sorted by overall score
+            models_with_overall = {model_id: history.get("overall_score", 0.0) 
+                                  for model_id, history in self.model_performance_history.items()}
+            return sorted(models_with_overall.keys(), key=lambda x: models_with_overall[x], reverse=True)[:top_n]

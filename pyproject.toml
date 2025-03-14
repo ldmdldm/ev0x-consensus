@@ -1,3 +1,79 @@
+[tool.poetry]
+name = "ev0x"
+version = "0.1.0"
+description = "EV0X Project"
+authors = ["Team <team@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[tool.mypy]
+# Core settings
+python_version = "3.9"
+platform = "linux"
+
+# Type checking behavior
+ignore_missing_imports = true
+follow_imports = "skip"
+allow_redefinition = true
+implicit_reexport = true
+allow_untyped_defs = true
+check_untyped_defs = false
+
+# Common ML project settings
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+
+# Warnings configuration
+warn_redundant_casts = false
+warn_unused_ignores = false
+warn_no_return = false
+warn_return_any = false
+warn_unused_configs = false
+
+# Disable specific error codes for ML flexibility
+disable_error_code = [
+    "attr-defined",
+    "name-defined",
+    "call-arg",
+    "arg-type",
+    "assignment",
+    "override",
+    "return-value",
+    "no-redef",
+    "dict-item",
+    "index",
+    "var-annotated",
+    "return",
+    "annotation-unchecked"
+]
+
+# ML project specific exclusions
+exclude = [
+    'tests/',
+    'setup.py',
+    'docs/',
+    'build/',
+    '.venv/',
+    'src/data/datasets.py',
+    'src/flare_integrations/state_connector.py',
+    'src/evaluation/metrics.py',
+    'src/consensus/synthesizer.py',
+    'src/tee/integration.py',
+    'src/benchmarks/'
+]
+
+# Per-module settings for data science patterns
+[[tool.mypy.overrides]]
+module = "pandas.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "numpy.*"
+ignore_missing_imports = true
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build_backend"

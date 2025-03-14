@@ -12,8 +12,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any, Union, TypeVar, cast
-from xml.etree.ElementTree import Element
+from typing import Dict, List, Optional, Tuple, Any, Union
 
 import numpy as np
 import requests

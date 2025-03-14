@@ -145,4 +145,4 @@ def get_enabled_models() -> List[ModelConfig]:
 def get_models_by_capability(capability: str) -> List[ModelConfig]:
     """Get all models that have a specific capability."""
     return [model for model in DEFAULT_MODELS
-            if model.enabled and capability in model.capabilities]
+            if model.enabled and model.capabilities is not None and capability in model.capabilities]

@@ -9,15 +9,22 @@ Evolutionary Model Consensus (EMC) over individual model predictions.
 """
 
 import os
+import sys
 import json
 import time
+import logging
+import asyncio
 import argparse
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Any, Optional
-from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
+from typing import Dict, List, Tuple, Any, Optional, Union, TypedDict, cast
+from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Import internal modules
 from src.models.model_runner import ModelRunner
@@ -57,7 +64,7 @@ class BenchmarkRunner:
         self.consensus = ConsensusSynthesizer(consensus_config)
         
         # Results storage
-        self.results = {
+        self.results: Dict[str, Dict[str, Any]] = {
             "single_models": {},
             "consensus": {}
         }
@@ -117,7 +124,7 @@ class BenchmarkRunner:
         Returns:
             Dictionary mapping dataset names to lists of test examples
         """
-        datasets = {}
+        datasets: Dict[str, List[Dict[str, Any]]] = {}
         for dataset_info in self.config.get("test_datasets", []):
             try:
                 if os.path.exists(dataset_info["path"]):
@@ -176,12 +183,12 @@ class BenchmarkRunner:
             model_name = model.get("name", model_id)
             print(f"\nBenchmarking single model: {model_name}")
             
-            model_results = {}
+            model_results: Dict[str, Dict[str, Any]] = {}
             
             for dataset_name, examples in datasets.items():
                 print(f"  Dataset: {dataset_name} ({len(examples)} examples)")
                 
-                dataset_results = {
+                dataset_results: Dict[str, Any] = {
                     "predictions": [],
                     "metrics": {},
                     "runtime": 0
@@ -197,9 +204,9 @@ class BenchmarkRunner:
                     prompt = self._format_prompt(example)
                     
                     try:
-                        response = await self.model_runner.run_model(
-                            model_id=model_id,
-                            prompt=prompt
+                        response = await self.model_runner.run_models(
+                            prompt=prompt,
+                            model_ids=[model_id]
                         )
                         
                         prediction = {
@@ -234,12 +241,12 @@ class BenchmarkRunner:
         print("\nBenchmarking consensus approach")
         
         model_ids = [model["id"] for model in self.config["models"]]
-        consensus_results = {}
+        consensus_results: Dict[str, Dict[str, Any]] = {}
         
         for dataset_name, examples in datasets.items():
             print(f"  Dataset: {dataset_name} ({len(examples)} examples)")
             
-            dataset_results = {
+            dataset_results: Dict[str, Any] = {
                 "predictions": [],
                 "metrics": {},
                 "runtime": 0
@@ -256,16 +263,16 @@ class BenchmarkRunner:
                 
                 try:
                     # Get answers from individual models first
-                    model_answers = {}
+                    model_answers: Dict[str, str] = {}
                     for model_id in model_ids:
-                        model_response = await self.model_runner.run_model(
-                            model_id=model_id,
-                            prompt=prompt
+                        model_response = await self.model_runner.run_models(
+                            prompt=prompt,
+                            model_ids=[model_id]
                         )
                         model_answers[model_id] = model_response
                     
                     # Run consensus synthesis
-                    consensus_response = await self.consensus.generate_consensus(
+                    consensus_response = await self.consensus.generate_consensus_completion(
                         prompt=prompt,
                         model_responses=model_answers
                     )
@@ -303,7 +310,7 @@ class BenchmarkRunner:
         Returns:
             Dictionary of calculated metrics
         """
-        metrics = {}
+        metrics: Dict[str, float] = {}
         
         if "factual_accuracy" in self.config.get("metrics", []):
             metrics["factual_accuracy"] = calculate_factual_accuracy(predictions)
@@ -344,7 +351,7 @@ class BenchmarkRunner:
         print("\n===== BENCHMARK RESULTS SUMMARY =====")
         
         # Create summary table
-        summary = {
+        summary: Dict[str, List[Any]] = {
             "Model": [],
             "Dataset": [],
             "Factual Accuracy": [],
@@ -353,8 +360,6 @@ class BenchmarkRunner:
             "Reasoning Quality": [],
             "Runtime (s)": []
         }
-        
-        # Add single model results
         for model_id, model_results in self.results["single_models"].items():
             model_name = next((m["name"] for m in self.config["models"] if m["id"] == model_id), model_id)
             for dataset_name, dataset_results in model_results.items():
@@ -405,47 +410,27 @@ class BenchmarkRunner:
         print(f"\nFull results saved to {results_path}")
         
         # Generate and save summary as CSV
-        summary_df = self.
+        summary_df: pd.DataFrame = self.summarize_results()
+        
+        # Save summary as CSV
+        summary_path = os.path.join(output_dir, f"benchmark_summary_{timestamp}.csv")
+        summary_df.to_csv(summary_path, index=False)
+        
+        print(f"Summary saved to {summary_path}")
+        
+        return summary_df
 
-#!/usr/bin/env python3
-"""
-Benchmark script to compare performance of single models vs consensus approaches.
-
-This script evaluates:
-1. Individual model performance on a set of prompts
-2. Consensus-based performance using the same prompts
-3. Performance metrics including accuracy, factual correctness, and hallucination rates
-4. Visualization of comparative results
-
-Results are saved in a JSON format for later analysis and visualization.
-"""
-import os
-import sys
-import json
-import logging
-import asyncio
-import argparse
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
-from dotenv import load_dotenv
 
 # Add the project root to the path so we can import from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.consensus.synthesizer import ConsensusSynthesizer
-from src.router.openrouter import OpenRouterClient
+# Import additional modules
 from src.evaluation.metrics import Metrics, PerformanceTracker, evaluate_consensus_quality
 from src.rewards.shapley import ShapleyCalculator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 class BenchmarkConfig:
     """Configuration for benchmark execution."""
@@ -546,7 +531,7 @@ class ConsensusBenchmark:
         self.performance_tracker = PerformanceTracker(
             metrics_store_path=os.path.join(config.output_dir, "metrics_history.json")
         )
-        self.results = {
+        self.results: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "models": [m["id"] for m in config.models],
@@ -557,7 +542,7 @@ class ConsensusBenchmark:
         }
     
     async def evaluate_single_model(self, model_id: str, prompt: str, 
-                               parameters: Dict[str, Any] = None) -> Dict[str, Any]:
+                               parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Evaluate a single model on a specific prompt.
         
@@ -591,13 +576,12 @@ class ConsensusBenchmark:
                     "duration_seconds": duration
                 }
             
-            result = {
+            result: Dict[str, Any] = {
                 "model_id": model_id,
                 "status": "success",
                 "response": response.get("text", ""),
                 "duration_seconds": duration
             }
-            
             # Add quality metrics
             result["metrics"] = self._calculate_response_metrics(
                 response.get("text", ""),
@@ -649,7 +633,7 @@ class ConsensusBenchmark:
                     "duration_seconds": duration
                 }
             
-            response = {
+            response: Dict[str, Any] = {
                 "status": "success",
                 "consensus_output": consensus_output,
                 "consensus_confidence": result.get("confidence", 0.0),
@@ -689,7 +673,7 @@ class ConsensusBenchmark:
         Returns:
             Dictionary of quality metrics
         """
-        metrics = {}
+        metrics: Dict[str, float] = {}
         
         # Basic metrics
         metrics["length"] = len(response)
@@ -742,12 +726,12 @@ class ConsensusBenchmark:
         Returns:
             Dictionary with benchmark results
         """
-        run_results = []
+        run_results: List[Dict[str, Any]] = []
         
         for run_idx in range(self.config.num_runs):
             logger.info(f"Starting benchmark run {run_idx + 1}/{self.config.num_runs}")
             
-            run_data = {
+            run_data: Dict[str, Any] = {
                 "run_id": run_idx + 1,
                 "timestamp": datetime.now().isoformat(),
                 "prompts": []
@@ -761,7 +745,7 @@ class ConsensusBenchmark:
                 
                 logger.info(f"Evaluating prompt: {prompt_id}")
                 
-                prompt_result = {
+                prompt_result: Dict[str, Any] = {
                     "prompt_id": prompt_id,
                     "prompt_text": prompt_text,
                     "category": prompt_category,
@@ -780,18 +764,17 @@ class ConsensusBenchmark:
                     # Store in results
                     prompt_result["single_model_results"][model_id] = single_result
                     
-                    # Add to performance tracker
-                    if single_result["status"] == "success" and "metrics" in single_result:
-                        self.performance_tracker.add_result(
-                            metrics=single_result["metrics"],
-                            model_id=model_id,
-                            task_type=prompt_category,
-                            metadata={
-                                "prompt_id": prompt_id,
-                                "run_id": run_idx + 1,
-                                "benchmark_type": "single_model"
-                            }
-                        )
+                    self.performance_tracker.add_result(
+                        metrics=single_result.get("metrics", {}),
+                        model_id=model_id,
+                        task_type=prompt_category,
+                        timestamp=datetime.now(),
+                        metadata={
+                            "prompt_id": prompt_id,
+                            "run_id": run_idx + 1,
+                            "benchmark_type": "single_model"
+                        }
+                    )
                 
                 # Evaluate consensus approach
                 logger.info("Evaluating consensus approach")
@@ -801,43 +784,23 @@ class ConsensusBenchmark:
                 # Add to performance tracker
                 if consensus_result["status"] == "success" and "metrics" in consensus_result:
                     self.performance_tracker.add_result(
-                        metrics=consensus_result["metrics"],
+                        metrics=consensus_result.get("metrics", {}),
                         model_id="consensus",
                         task_type=prompt_category,
+                        timestamp=datetime.now(),
                         metadata={
                             "prompt_id": prompt_id,
-                            "run_id":
-
-"""
-Benchmark script comparing single model performance against consensus approaches.
-
-This script evaluates and compares the performance of individual models against
-various consensus mechanisms across multiple metrics including:
-- Accuracy
-- Factual correctness
-- Hallucination rate
-- Citation validity
-
-Results are saved to allow for visualization and analysis.
-"""
-import asyncio
-import json
-import os
-import time
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# Project imports
-from src.models.model_runner import ModelRunner
-from src.consensus.synthesizer import ConsensusSynthesizer, ModelOutputType
-from src.evaluation.metrics import Metrics, PerformanceTracker, evaluate_consensus_quality
-from src.router.openrouter import OpenRouterClient
-
-
+                            "run_id": run_idx + 1,
+                            "benchmark_type": "consensus"
+                        }
+                    )
+                
+                run_data["prompts"].append(prompt_result)
+            
+            run_results.append(run_data)
+        
+        self.results["runs"] = run_results
+        return self.results
 class ConsensusVsSingleBenchmark:
     """
     Benchmark class for comparing single model performance against consensus approaches.
@@ -1009,14 +972,14 @@ class ConsensusVsSingleBenchmark:
                 **model_config.get("parameters", {})
             )
     
-    async def run_benchmark(self):
+    async def run_benchmark(self) -> Dict[str, Any]:
         """
         Run the full benchmark comparing single models vs consensus approaches.
         
         Returns:
             Dictionary with benchmark results
         """
-        results = {
+        results: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "config": self.config,
             "datasets": {},
@@ -1053,7 +1016,7 @@ class ConsensusVsSingleBenchmark:
         Returns:
             Dictionary with dataset benchmark results
         """
-        dataset_results = {
+        dataset_results: Dict[str, Any] = {
             "name": dataset.get("name", "unnamed"),
             "description": dataset.get("description", ""),
             "items": [],
@@ -1088,7 +1051,7 @@ class ConsensusVsSingleBenchmark:
             )
             
             # Store results
-            item_result = {
+            item_result: Dict[str, Any] = {
                 "query": query,
                 "ground_truth": ground_truth,
                 "type": item_type,
@@ -1100,7 +1063,7 @@ class ConsensusVsSingleBenchmark:
             dataset_results["items"].append(item_result)
             
             # Track performance metrics
-            self.track_performance_metrics(item_result)
+            self.track_performance_metrics(item_result, dataset_name=dataset_results["name"])
         
         # Calculate aggregate metrics for the dataset
         dataset_metrics = self.calculate_dataset_metrics(dataset_results["items"])
@@ -1119,10 +1082,10 @@ class ConsensusVsSingleBenchmark:
             Dictionary mapping model IDs to their outputs
         """
         model_ids = self.model_runner.get_available_models()
-        results = await self.model_runner.run_models(query, model_ids=model_ids)
+        results = await self.model_runner.run_models(prompt=query, model_ids=model_ids)
         
         # Format the results
-        outputs = {}
+        outputs: Dict[str, Dict[str, Any]] = {}
         for model_id, result in results.items():
             outputs[model_id] = {
                 "status": result.get("status", "error"),
@@ -1146,7 +1109,7 @@ class ConsensusVsSingleBenchmark:
             Dictionary mapping consensus method to consensus output
         """
         consensus_methods = self.config.get("consensus_methods", ["majority"])
-        consensus_outputs = {}
+        consensus_outputs: Dict[str, Dict[str, Any]] = {}
         
         # Standard consensus synthesis
         consensus_result = self.consensus_synthesizer.synthesize(single_outputs)
@@ -1201,19 +1164,19 @@ class ConsensusVsSingleBenchmark:
             Dictionary with evaluation metrics
         """
         # Extract actual outputs for comparison
-        single_model_texts = {}
+        single_model_texts: Dict[str, str] = {}
         for model_id, output_data in single_outputs.items():
             if output_data.get("status") == "success":
                 single_model_texts[model_id] = output_data.get("output", "")
         
-        consensus_texts = {}
+        consensus_texts: Dict[str, str] = {}
         for method, output_data in consensus_outputs.items():
             if method == "disagreement_analysis":
                 continue
             consensus_texts[method] = output_data.get("consensus", "")
         
         # Initialize evaluation metrics
-        evaluation = {
+        evaluation: Dict[str, Dict[str, Dict[str, float]]] = {
             "accuracy": {
                 "single_models": {},
                 "consensus": {}
@@ -1236,3 +1199,296 @@ class ConsensusVsSingleBenchmark:
         for model_id, text in single_model_texts.items():
             accuracy = self._calculate_accuracy(text, ground_truth)
             evaluation["accuracy"]["single_models"][model_id] = accuracy
+            
+        for method, text in consensus_texts.items():
+            accuracy = self._calculate_accuracy(text, ground_truth)
+            evaluation["accuracy"]["consensus"][method] = accuracy
+            
+        return evaluation
+    
+    def _calculate_accuracy(self, text: str, ground_truth: str) -> float:
+        """
+        Calculate accuracy by checking if the ground truth is present in the text.
+        
+        Args:
+            text: The model generated text
+            ground_truth: The ground truth answer
+            
+        Returns:
+            Accuracy score (0.0 to 1.0)
+        """
+        if not text or not ground_truth:
+            return 0.0
+            
+        # Simple exact match
+        if ground_truth.lower() in text.lower():
+            return 1.0
+            
+        # Calculate word overlap ratio
+        ground_truth_words = set(ground_truth.lower().split())
+        text_words = set(text.lower().split())
+        
+        if len(ground_truth_words) == 0:
+            return 0.0
+            
+        overlap = len(ground_truth_words.intersection(text_words))
+        return overlap / len(ground_truth_words)
+        
+    def track_performance_metrics(self, item_result: Dict[str, Any], dataset_name: str):
+        """
+        Track performance metrics for an evaluation item.
+        
+        Args:
+            item_result: Dictionary with evaluation results for a single item
+            dataset_name: Name of the dataset being processed
+        """
+        evaluation = item_result.get("evaluation", {})
+        query_type = item_result.get("type", "general")
+        
+        # Track single model metrics
+        for model_id, accuracy in evaluation.get("accuracy", {}).get("single_models", {}).items():
+            self.performance_tracker.add_result(
+                metrics={"accuracy": accuracy},
+                model_id=model_id,
+                task_type=query_type,
+                timestamp=datetime.now(),
+                metadata={
+                    "dataset": dataset_name,
+                    "query": item_result.get("query", ""),
+                    "benchmark_type": "single_model"
+                }
+            )
+            
+        # Track consensus metrics
+        for method, accuracy in evaluation.get("accuracy", {}).get("consensus", {}).items():
+            self.performance_tracker.add_result(
+                metrics={"accuracy": accuracy},
+                model_id=f"consensus_{method}",
+                task_type=query_type,
+                timestamp=datetime.now(),
+                metadata={
+                    "dataset": dataset_name,
+                    "query": item_result.get("query", ""),
+                    "benchmark_type": "consensus"
+                }
+            )
+    
+    def calculate_dataset_metrics(self, items: List[Dict[str, Any]]) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """
+        Calculate aggregate metrics for a dataset.
+        
+        Args:
+            items: List of evaluation items
+            
+        Returns:
+            Dictionary with aggregated metrics
+        """
+        # Initialize metrics structure
+        metrics: Dict[str, Any] = {
+            "accuracy": {
+                "single_models": {},
+                "consensus": {}
+            },
+            "factual_correctness": {
+                "single_models": {},
+                "consensus": {}
+            },
+            "hallucination_rate": {
+                "single_models": {},
+                "consensus": {}
+            },
+            "citation_validity": {
+                "single_models": {},
+                "consensus": {}
+            }
+        }
+        
+        # Track counts for averaging
+        counts: Dict[str, Dict[str, int]] = {
+            "single_models": {},
+            "consensus": {}
+        }
+        
+        # Aggregate metrics from all items
+        for item in items:
+            evaluation = item.get("evaluation", {})
+            
+            # Process each metric type
+            for metric_name in metrics.keys():
+                if metric_name not in evaluation:
+                    continue
+                    
+                # Process single model metrics
+                for model_id, value in evaluation[metric_name].get("single_models", {}).items():
+                    if model_id not in metrics[metric_name]["single_models"]:
+                        metrics[metric_name]["single_models"][model_id] = 0.0
+                        counts["single_models"][model_id] = 0
+                    
+                    metrics[metric_name]["single_models"][model_id] += value
+                    counts["single_models"][model_id] += 1
+                
+                # Process consensus metrics
+                for method, value in evaluation[metric_name].get("consensus", {}).items():
+                    if method not in metrics[metric_name]["consensus"]:
+                        metrics[metric_name]["consensus"][method] = 0.0
+                        counts["consensus"][method] = 0
+                    
+                    metrics[metric_name]["consensus"][method] += value
+                    counts["consensus"][method] += 1
+        
+        # Calculate averages
+        for metric_name in metrics.keys():
+            # Average single model metrics
+            for model_id in metrics[metric_name]["single_models"].keys():
+                if counts["single_models"].get(model_id, 0) > 0:
+                    metrics[metric_name]["single_models"][model_id] /= counts["single_models"][model_id]
+            
+            # Average consensus metrics
+            for method in metrics[metric_name]["consensus"].keys():
+                if counts["consensus"].get(method, 0) > 0:
+                    metrics[metric_name]["consensus"][method] /= counts["consensus"][method]
+        
+        return metrics
+        
+    def calculate_summary_metrics(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculate summary metrics across all datasets.
+        
+        Args:
+            results: Dictionary with benchmark results
+            
+        Returns:
+            Dictionary with summary metrics
+        """
+        summary: Dict[str, Any] = {
+            "single_models": {},
+            "consensus": {}
+        }
+        
+        # Initialize counters for each model and metric
+        model_metrics: Dict[str, Dict[str, float]] = {}
+        model_counts: Dict[str, int] = {}
+        
+        consensus_metrics: Dict[str, Dict[str, float]] = {}
+        consensus_counts: Dict[str, int] = {}
+        
+        # Process each dataset
+        for dataset_name, dataset_results in results.get("datasets", {}).items():
+            dataset_metrics = dataset_results.get("metrics", {})
+            
+            # Process single model metrics
+            for metric_name, metric_data in dataset_metrics.items():
+                if "single_models" not in metric_data:
+                    continue
+                    
+                for model_id, value in metric_data["single_models"].items():
+                    if model_id not in model_metrics:
+                        model_metrics[model_id] = {}
+                        model_counts[model_id] = 0
+                    
+                    if metric_name not in model_metrics[model_id]:
+                        model_metrics[model_id][metric_name] = 0.0
+                    
+                    model_metrics[model_id][metric_name] += value
+                    model_counts[model_id] += 1
+            
+            # Process consensus metrics
+            for metric_name, metric_data in dataset_metrics.items():
+                if "consensus" not in metric_data:
+                    continue
+                    
+                for method, value in metric_data["consensus"].items():
+                    method_key = f"consensus_{method}"
+                    
+                    if method_key not in consensus_metrics:
+                        consensus_metrics[method_key] = {}
+                        consensus_counts[method_key] = 0
+                    
+                    if metric_name not in consensus_metrics[method_key]:
+                        consensus_metrics[method_key][metric_name] = 0.0
+                    
+                    consensus_metrics[method_key][metric_name] += value
+                    consensus_counts[method_key] += 1
+        
+        # Calculate averages
+        for model_id, metrics_dict in model_metrics.items():
+            if model_counts.get(model_id, 0) > 0:
+                summary["single_models"][model_id] = {
+                    metric_name: value / model_counts[model_id]
+                    for metric_name, value in metrics_dict.items()
+                }
+        
+        for method_key, metrics_dict in consensus_metrics.items():
+            if consensus_counts.get(method_key, 0) > 0:
+                summary["consensus"][method_key] = {
+                    metric_name: value / consensus_counts[method_key]
+                    for metric_name, value in metrics_dict.items()
+                }
+        
+        return summary
+    
+    def save_results(self, results: Dict[str, Any]) -> None:
+        """
+        Save benchmark results to disk.
+        
+        Args:
+            results: Dictionary with benchmark results
+        """
+        output_dir = self.config.get("output_dir", "data/benchmarks")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Save full results as JSON
+        results_path = os.path.join(output_dir, f"benchmark_results_{timestamp}.json")
+        
+        # Create a serializable copy of the results
+        serializable_results = self._make_serializable(results)
+        
+        with open(results_path, 'w') as f:
+            json.dump(serializable_results, f, indent=2)
+        
+        print(f"Full results saved to {results_path}")
+        
+        # Generate and save summary as CSV
+        try:
+            summary_df = self._create_summary_dataframe(results)
+            
+            # Save summary as CSV
+            summary_path = os.path.join(output_dir, f"benchmark_summary_{timestamp}.csv")
+            summary_df.to_csv(summary_path, index=False)
+            
+            print(f"Summary saved to {summary_path}")
+        except Exception as e:
+            print(f"Error creating summary dataframe: {e}")
+    
+    def _make_serializable(self, obj: Any) -> Any:
+        """
+        Convert an object to a JSON-serializable format.
+        
+        Args:
+            obj: The object to convert
+            
+        Returns:
+            JSON-serializable version of the object
+        """
+        if isinstance(obj, dict):
+            return {k: self._make_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._make_serializable(item) for item in obj]
+        elif isinstance(obj, (datetime,)):
+            return obj.isoformat()
+        elif hasattr(obj, "__dict__"):
+            return self._make_serializable(obj.__dict__)
+        else:
+            return obj
+    
+    def _create_summary_dataframe(self, results: Dict[str, Any]) -> pd.DataFrame:
+        """Creates a summary DataFrame from benchmark results.
+        
+        Args:
+            results: Dictionary containing benchmark results.
+            
+        Returns:
+            pd.DataFrame: A DataFrame summarizing the benchmark results.
+        """

@@ -117,7 +117,7 @@ class ShapleyCalculator:
         """
         self.evaluation_function = evaluation_function
         self.base_calculator = ShapleyValueCalculator(evaluation_function) if evaluation_function is not None else None
-        self.cached_values: Dict[FrozenSet[str], float] = {}
+        self.cached_values: Dict[FrozenSet[str], Dict[str, float]] = {}
 
     def calculate_shapley_values(
         self, 
@@ -142,7 +142,7 @@ class ShapleyCalculator:
         shapley_values = calculator.calculate_shapley_values(model_ids)
 
         # Cache the calculated values for later analysis
-        cache_key = tuple(sorted(model_ids))
+        cache_key = frozenset(model_ids)
         self.cached_values[cache_key] = shapley_values
 
         return shapley_values
@@ -177,7 +177,7 @@ class ShapleyCalculator:
                                   else model_outputs[model_id] for model_id in model_subset]
                 # Use simple average similarity for this implementation
                 # In practice, more sophisticated NLP metrics would be used
-                similarities = [self._text_similarity(output, reference_output)
+                similarities = [self._text_similarity(str(output), str(reference_output))
                                 for output in subset_outputs]
                 return sum(similarities) / len(similarities)
 
@@ -193,7 +193,7 @@ class ShapleyCalculator:
             for i in range(len(subset_outputs)):
                 for j in range(i + 1, len(subset_outputs)):
                     agreement_scores.append(
-                        self._text_similarity(subset_outputs[i], subset_outputs[j])
+                        self._text_similarity(str(subset_outputs[i]), str(subset_outputs[j]))
                     )
 
             return sum(agreement_scores) / len(agreement_scores) if agreement_scores else 0.0
@@ -281,6 +281,7 @@ class ShapleyCalculator:
             # Count occurrences of each class
             class_counts: Dict[str, int] = {}
             for cls in subset_classes:
+                class_counts[cls] = class_counts.get(cls, 0) + 1
 
             # Find the most common class and its count
             most_common_class = max(class_counts.items(), key=lambda x: x[1])

@@ -1,6 +1,5 @@
 """TEE Attestation module for Confidential Computing."""
 
-import os
 import json
 import logging
 import requests

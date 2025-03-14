@@ -73,13 +73,13 @@ class TEEAttestationVerifier:
             trusted_keys_path: Path to a JSON file containing trusted public keys
                 for verifying attestation signatures.
         """
-        self.trusted_keys = {}
+        self.trusted_keys: Dict[str, Any] = {}
         if trusted_keys_path and os.path.exists(trusted_keys_path):
             with open(trusted_keys_path, 'r') as f:
                 self.trusted_keys = json.load(f)
 
         # Default expected measurements for known-good configurations
-        self.expected_measurements = {
+        self.expected_measurements: Dict[str, List[str]] = {
             "TDX": [],  # List of valid TDX measurements
             "SEV": []   # List of valid SEV measurements
         }
@@ -173,7 +173,7 @@ class SecureKeyManager:
         Args:
             sealed_key_path: Path to a sealed key file (if available).
         """
-        self.keys = {}
+        self.keys: Dict[str, Dict[str, Any]] = {}
         self.sealed_key_path = sealed_key_path
 
         # If running in a TEE, we would check for that here
@@ -256,7 +256,7 @@ class SecureModelEnclave:
         self.attestation_verifier = attestation_verifier
         self.key_manager = key_manager
         self.is_initialized = False
-        self.models = {}
+        self.models: dict[str, Any] = {}
 
     def initialize(self, remote_attestation: bool = True) -> bool:
         """

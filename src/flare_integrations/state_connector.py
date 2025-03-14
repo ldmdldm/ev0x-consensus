@@ -2,16 +2,49 @@ import os
 import json
 import time
 import logging
-import requests
-from typing import Dict, List, Optional, Tuple, Union, Any
-
+from typing import Dict, List, Optional, Any, TypedDict, Callable, Union, Tuple
 from web3 import Web3
-from web3.contract import Contract
+from web3.types import TxReceipt as Web3TxReceipt, BlockData as Web3BlockData
+from eth_typing import HexStr, Hash32, Address, ChecksumAddress
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class TxReceipt(TypedDict):
+    """Type definition for transaction receipt data"""
+    transactionHash: HexStr
+    blockNumber: int
+    blockHash: HexStr
+    from_address: ChecksumAddress  # Using ChecksumAddress for Ethereum addresses
+    to: Optional[ChecksumAddress]
+    value: int
+    gasUsed: int
+    logs: List[Dict[str, Any]]
+    status: bool
+    # Additional fields that might be in a Web3 receipt
+    contractAddress: Optional[ChecksumAddress]
+    cumulativeGasUsed: int
+    effectiveGasPrice: int
+    logsBloom: HexStr
+    type: int
+    
+class BlockData(TypedDict):
+    """Type definition for block data"""
+    number: int
+    hash: HexStr
+    timestamp: int
+    parentHash: HexStr
+    nonce: HexStr
+    size: int
+    transactions: List[HexStr]
+    # Additional fields from Web3 BlockData
+    difficulty: int
+    gasLimit: int
+    gasUsed: int
+    miner: ChecksumAddress
+    totalDifficulty: int
+    
 class StateConnector:
     """
     Integration with Flare Network's StateConnector protocol for cross-chain attestations
@@ -26,7 +59,7 @@ class StateConnector:
         "coston": "0x0c13AdA9D39A8F7Fec1F51A4591262d2b67E8a3E",  # Coston testnet
     }
     
-    def __init__(self, network: str = "flare", provider_url: Optional[str] = None, private_key: Optional[str] = None):
+    def __init__(self, network: str = "flare", provider_url: Optional[str] = None, private_key: Optional[str] = None) -> None:
         """
         Initialize the StateConnector client.
         
@@ -65,7 +98,7 @@ class StateConnector:
             ]
         
         # Initialize contract
-        self.sc_contract_address = Web3.to_checksum_address(self.CONTRACTS.get(self.network))
+        self.sc_contract_address: ChecksumAddress = Web3.to_checksum_address(self.CONTRACTS.get(self.network))
         self.sc_contract = self.w3.eth.contract(address=self.sc_contract_address, abi=self.sc_abi)
         
         # Set up account for transaction signing if private key provided
@@ -75,7 +108,7 @@ class StateConnector:
             logger.info(f"Using account {self.account.address} for transactions")
     
     def request_attestation(self, attestation_type: str, source_id: str, 
-                           data: Dict[str, Any]) -> str:
+                           data: Dict[str, Any]) -> HexStr:
         """
         Submit an attestation request to the StateConnector protocol.
         
@@ -113,9 +146,9 @@ class StateConnector:
         tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
         
         logger.info(f"Attestation request submitted: {tx_hash.hex()}")
-        return tx_hash.hex()
+        return tx_hash.hex()  # type: ignore[return-value]
     
-    def verify_transaction(self, source_chain: str, tx_hash: str, 
+    def verify_transaction(self, source_chain: str, tx_hash: HexStr, 
                           confirmations: int = 5) -> Dict[str, Any]:
         """
         Verify a transaction from another chain using the StateConnector protocol.
@@ -128,6 +161,7 @@ class StateConnector:
         Returns:
             Verification result with status and details
         """
+        logger.info(f"Submitting transaction verification request for tx {tx_hash} on {source_chain}")
         # Create transaction verification request
         attestation_data = {
             "transactionHash": tx_hash,
@@ -162,9 +196,9 @@ class StateConnector:
                 "error": attestation_result.get("error", "Verification failed")
             }
     
-    def verify_payment(self, source_chain: str, tx_hash: str, 
-                      recipient: str, amount: str, 
-                      token_address: Optional[str] = None) -> Dict[str, Any]:
+    def verify_payment(self, source_chain: str, tx_hash: HexStr, 
+                      recipient: ChecksumAddress, amount: str, 
+                      token_address: Optional[ChecksumAddress] = None) -> Dict[str, Any]:
         """
         Verify a payment transaction from another chain.
         
@@ -219,7 +253,7 @@ class StateConnector:
                 "error": attestation_result.get("error", "Payment verification failed")
             }
     
-    def get_attestation_state(self, request_hash: str) -> Dict[str, Any]:
+    def get_attestation_state(self, request_hash: HexStr) -> Dict[str, Union[HexStr, int, str]]:
         """
         Get the current state of an attestation request.
         
@@ -230,8 +264,8 @@ class StateConnector:
             Current state of the attestation
         """
         # Convert hash to bytes32
-        request_hash_bytes = self.w3.to_bytes(hexstr=request_hash)
-        
+        # Convert hash to bytes32
+        request_hash_bytes = self.w3.to_bytes(hexstr=request_hash)  # type: ignore[arg-type]
         # Get state from contract
         state = self.sc_contract.functions.getAttestationState(request_hash_bytes).call()
         
@@ -249,7 +283,7 @@ class StateConnector:
             "state": state_map.get(state, "unknown")
         }
     
-    def _wait_for_attestation(self, request_tx: str, 
+    def _wait_for_attestation(self, request_tx: HexStr, 
                              timeout: int = 300, 
                              poll_interval: int = 5) -> Dict[str, Any]:
         """
@@ -267,10 +301,10 @@ class StateConnector:
         
         # Wait for transaction to be mined
         logger.info(f"Waiting for attestation request {request_tx} to be mined")
-        receipt = None
+        receipt: Optional[TxReceipt] = None
         while receipt is None and (time.time() - start_time) < timeout:
             try:
-                receipt = self.w3.eth.get_transaction_receipt(request_tx)
+                receipt = self.w3.eth.get_transaction_receipt(request_tx)  # type: ignore[arg-type]
             except Exception:
                 time.sleep(poll_interval)
         
@@ -285,7 +319,7 @@ class StateConnector:
         try:
             # Parse event logs to find request hash
             # This is a simplified example - in production, use proper event parsing
-            request_hash = receipt.logs[0].topics[1].hex()
+            request_hash = receipt.logs[0].topics[1].hex()  # type: ignore[attr-defined]
         except (IndexError, AttributeError):
             return {
                 "status": "failed",
@@ -304,7 +338,7 @@ class StateConnector:
                     "status": "confirmed",
                     "attestationId": request_hash,
                     "confirmationBlock": receipt.blockNumber,
-                    "timestamp": self.w3.eth.get_block(receipt.blockNumber).timestamp
+                    "timestamp": self.w3.eth.get_block(receipt.blockNumber, full_transactions=False).timestamp  # type: ignore[attr-defined]
                 }
             elif state == "rejected":
                 return {
@@ -325,9 +359,9 @@ class StateConnector:
             "error": "Attestation not processed within timeout period"
         }
     
-    def monitor_attestations(self, attestation_ids: List[str], 
-                            callback=None, 
-                            interval: int = 10) -> None:
+    def monitor_attestations(self, attestation_ids: List[HexStr], 
+                            callback: Optional[Callable[[HexStr, Dict[str, Any]], None]] = None, 
+                            interval: int = 10) -> Dict[HexStr, Optional[str]]:
         """
         Monitor multiple attestation requests and optionally execute a callback 
         when their state changes.
@@ -370,13 +404,13 @@ class StateConnector:
         logger.info("Attestation monitoring completed")
         
         # Return final states
-        return states
+        return states  # type: ignore[return-value]
 
 
 # Example usage in a cross-chain verification context
 if __name__ == "__main__":
     # Test StateConnector functionality
-    def test_state_connector():
+    def test_state_connector() -> None:
         # Load private key from environment variable
         private_key = os.environ.get("FLARE_PRIVATE_KEY")
         if not private_key:
@@ -396,6 +430,6 @@ if __name__ == "__main__":
             tx_hash="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
             confirmations=12
         )
-        
-        logger.info(
+
+        print(f"Transaction verification result: {tx_result}")
 

@@ -1,12 +1,8 @@
 import os
 import json
-import time
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Union
-import requests
+from typing import Dict, List, Optional, Tuple, Any, Union, cast
 from web3 import Web3
-from web3.contract import Contract
 from web3.exceptions import ContractLogicError
 
 # Configure logging
@@ -177,7 +173,7 @@ class FTSOIntegration:
         
         return deviation
     
-    def analyze_historical_prices(self, symbol: str, days: int = 7) -> Dict[str, any]:
+    def analyze_historical_prices(self, symbol: str, days: int = 7) -> Dict[str, Union[str, int, float]]:
         """
         Analyze historical price data for a symbol.
         
@@ -201,8 +197,7 @@ class FTSOIntegration:
                 "error": "Insufficient data"
             }
             
-        # Extract timestamps and prices
-        timestamps = [ts for ts, _ in self.price_history[symbol]]
+        # Extract prices
         prices = [price for _, price in self.price_history[symbol]]
         
         # Calculate metrics
@@ -262,7 +257,8 @@ class FTSOIntegration:
             
             # Get vote power block for this epoch
             try:
-                vote_power_block = ftso_contract.functions.getEpochVotePowerBlock(previous_epoch).call()
+                # Get the epoch vote power block (needed for context but not directly used)
+                ftso_contract.functions.getEpochVotePowerBlock(previous_epoch).call()
                 
                 # Get the finalization data for this epoch
                 finalization_timestamp, price, rewards_paid, median, weight = ftso_contract.functions.getEpochFinalizedData(previous_epoch).call()
@@ -317,7 +313,7 @@ class FTSOIntegration:
             logger.error(f"Error getting symbol index for {symbol}: {str(e)}")
             return None
     
-    def _get_ftso_abi(self) -> List[Dict]:
+    def _get_ftso_abi(self) -> List[Dict[str, Any]]:
         """Get the ABI for FTSO contracts."""
         # This would load the actual FTSO ABI
         ftso_abi_path = os.path.join(os.path.dirname(__file__), "abi/ftso_abi.json")
@@ -337,9 +333,10 @@ class FTSOIntegration:
                 return
                 
             # Get FTSO contract
+            # Get FTSO contract address (will be needed for actual implementation)
             ftso_address = self.ftso_manager.functions.getFtsoByIndex(symbol_index).call()
-            ftso_contract = self.w3.eth.contract(address=ftso_address, abi=self._get_ftso_abi())
-            
+            # Create contract instance (not used in this demo implementation but would be needed for real data fetching)
+            _ = self.w3.eth.contract(address=ftso_address, abi=self._get_ftso_abi())
             # For demonstration, we would scan price finalization events
             # This is simplified - in production we would use a proper indexing service
             
@@ -356,7 +353,7 @@ class FTSOIntegration:
 
 # Example usage
 if __name__ == "__main__":
-    import argparse
+    pass
     
     
 

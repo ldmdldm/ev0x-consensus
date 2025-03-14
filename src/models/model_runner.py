@@ -125,8 +125,9 @@ class ModelRunner:
         Run multiple models in parallel.
 
         Args:
-            input_data: Input data to be processed by the models
-            model_ids: List of model IDs to run (runs all registered models if None)
+            model_ids: List of model IDs to run
+            prompt: Text prompt to be processed by the models
+            **kwargs: Additional arguments to pass to the models
 
         Returns:
             Dictionary mapping model IDs to their outputs
@@ -158,7 +159,7 @@ class ModelRunner:
         # Create tasks for all inputs and all models
         batch_tasks = []
         for input_data in batch_inputs:
-            batch_tasks.append(self.run_models(input_data, model_ids, timeout))
+            batch_tasks.append(self.run_models(model_ids=model_ids, prompt=input_data, timeout=timeout))
 
         # Run all tasks concurrently
         return await asyncio.gather(*batch_tasks)

@@ -62,7 +62,7 @@ class OpenRouterClient:
         # Create a semaphore for rate limiting control
         self.semaphore = asyncio.Semaphore(RATE_LIMIT)  # Limit concurrent requests to RATE_LIMIT
         # Track request timestamps for rate limiting
-        self.request_timestamps: Deque[datetime] = deque(maxlen=RATE_LIMIT * 2)
+        self.request_timestamps: Deque[float] = deque(maxlen=RATE_LIMIT * 2)
 
     async def _make_request(self, endpoint: str, data: Dict, method: str = "POST") -> Dict:
         """
@@ -154,9 +154,9 @@ class OpenRouterClient:
             models = result.get('data', [])
 
             # Cache the models list
+            # Cache the models list
             self.models_cache = models
-            self.models_cache_expiry = datetime.now() + self.models_cache_duration
-
+            self.models_cache_expiry = datetime.now() + self.models_cache_duration if self.models_cache_duration else None
             logger.info(f"Retrieved {len(models)} models from OpenRouter")
             return models
 

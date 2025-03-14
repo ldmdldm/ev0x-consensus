@@ -325,11 +325,11 @@ class PerformanceTracker:
             metadata: Any additional information to store with the metrics
         """
         if timestamp is None:
-            timestamp: str = datetime.now().isoformat()
+            event_timestamp: str = datetime.now().isoformat()
 
         result: Dict[str, Union[str, float, Dict[str, Any]]] = {
             'metrics': metrics,
-            'timestamp': timestamp,
+            'timestamp': event_timestamp,
         }
 
         if model_id:

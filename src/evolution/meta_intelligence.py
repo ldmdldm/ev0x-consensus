@@ -2,7 +2,7 @@
 
 import logging
 import random
-from typing import Dict, List, Any, Optional, Tuple, DefaultDict, Type, Union, TypeVar
+from typing import Dict, List, Any, Optional, Tuple, DefaultDict, Union
 from collections import defaultdict
 from dataclasses import dataclass
 import json

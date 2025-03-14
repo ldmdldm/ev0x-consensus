@@ -1,8 +1,7 @@
 """Dataset access implementation for the ev0x project."""
 
 import logging
-import pandas as pd
-from typing import Dict, List, Optional, Any, TypeVar, Union, Callable
+from typing import Dict, List, Optional, Any, Callable
 from pandas import DataFrame
 from abc import ABC, abstractmethod
 from google.cloud import bigquery
@@ -15,7 +14,7 @@ class BaseDataset(ABC):
     """Base class for all datasets."""
 
     @abstractmethod
-    def get_data(self, **kwargs: Any) -> DataFrame:
+    def get_data(self, *args: Any, **kwargs: Any) -> DataFrame:
         """Get data from the dataset."""
 
     @abstractmethod
@@ -40,7 +39,7 @@ class FTSODataset(BaseDataset):
         self.block_latency_dataset = "public.ftso_block_latency"
         self.anchor_feeds_dataset = "public.ftso_anchor_feeds"
 
-    def get_data(self, limit: int = 1000, offset: int = 0, filters: Optional[Dict[str, Any]] = None) -> DataFrame:
+    def get_data(self, limit: int = 1000, offset: int = 0, filters: Optional[Dict[str, Any]] = None) -> DataFrame:  # type: ignore[override]
         """
         Get FTSO data from BigQuery.
 
@@ -177,7 +176,7 @@ class TrendsDataset(BaseDataset):
         self.dataset_id = "public.google_trends"
 
     def get_data(self, keyword: Optional[str] = None, date_from: Optional[str] = None,
-                 date_to: Optional[str] = None, limit: int = 1000) -> DataFrame:
+                 date_to: Optional[str] = None, limit: int = 1000) -> DataFrame:  # type: ignore[override]
         """
         Get Google Trends data.
 
@@ -241,7 +240,7 @@ class GitHubDataset(BaseDataset):
         self.dataset_id = "public.github_activity"
 
     def get_data(self, repo: Optional[str] = None, event_type: Optional[str] = None,
-                 limit: int = 1000) -> DataFrame:
+                 limit: int = 1000) -> DataFrame:  # type: ignore[override]
         """
         Get GitHub activity data.
 

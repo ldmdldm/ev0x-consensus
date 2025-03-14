@@ -1,3 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local development
+.env
+.env.bak
+*.bak
+
+# Project specific
+cloud-init.yaml
+consensus_test_report.json
+get-pip.py
+startup-script.sh
+temp_assertions.py
+update_assertions.py
+fix_attestation.py
+fix_indentation.py
+value_validator.py
+
+# Logs
+*.log
+
 # Python cache files
 __pycache__/
 *.py[cod]

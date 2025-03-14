@@ -18,14 +18,11 @@ Usage:
     price = dex_manager.get_token_price("FLR")
 """
 
-import os
-import json
 import time
 import logging
-from typing import Dict, List, Tuple, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any
 from decimal import Decimal
 from enum import Enum
-import requests
 from web3 import Web3
 
 # Configure logging
@@ -150,7 +147,7 @@ class DEXManager:
         self._connect_to_price_oracle()
         
         # Track liquidity positions
-        self.liquidity_positions = []
+        self.liquidity_positions: List[Dict[str, Any]] = []
         
     def _load_abis(self):
         """Load contract ABIs from files"""
@@ -215,6 +212,7 @@ class DEXManager:
         # Call factory to get pair
         # In a real implementation, this would call the factory contract
         # For this implementation, we'll return a placeholder
+        # TODO: Implement actual factory contract call using address_a and address_b
         pair_address = "0x" + "0" * 40  # Placeholder for pair address
         
         logger.info(f"Found pair for {token_a}/{token_b}: {pair_address}")
@@ -288,7 +286,7 @@ class DEXManager:
         deadline_timestamp = int(time.time() + deadline)
         
         # In a real implementation, this would call the router contract
-        # For this implementation, we'll log the action and return a sample response
+        # TODO: Implement actual router contract call using address_a, address_b, and other parameters
         tx_hash = "0x" + "1" * 64  # Placeholder transaction hash
         
         # Record the liquidity position
@@ -375,7 +373,7 @@ class DEXManager:
         deadline_timestamp = int(time.time() + deadline)
         
         # In a real implementation, this would call the router contract
-        # For this implementation, we'll log the action and return a sample response
+        # TODO: Implement actual contract call with proper parameters including deadline_timestamp
         tx_hash = "0x" + "2" * 64  # Placeholder transaction hash
         
         # Record the removal of liquidity
@@ -449,7 +447,7 @@ class DEXManager:
         deadline_timestamp = int(time.time() + deadline)
         
         # In a real implementation, this would call the router contract
-        # For this implementation, we'll log the action and return a sample response
+        # TODO: Implement actual swap using router contract with address_in, address_out, amount_in_wei, and min_amount_out_wei
         tx_hash = "0x" + "3" * 64  # Placeholder transaction hash
         
         # Calculate amount received (normally would be from tx receipt)

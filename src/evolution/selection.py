@@ -2,7 +2,7 @@
 
 import logging
 import numpy as np
-from typing import Dict, List, Tuple, Any, Optional, TypedDict, Union, Callable
+from typing import Dict, List, Tuple, Any, Optional, TypedDict, Union
 from enum import Enum, auto
 from dataclasses import dataclass
 import time

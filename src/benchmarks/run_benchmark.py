@@ -9,20 +9,19 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 
 # Ensure we can import from the ev0x project
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from src.evaluation.metrics import PerformanceTracker, Metrics, evaluate_consensus_quality
+from src.evaluation.metrics import PerformanceTracker
 from src.router.openrouter import OpenRouterClient
 from src.models.model_runner import ModelRunner
 from src.consensus.synthesizer import ConsensusSynthesizer
-from src.config.models import AVAILABLE_MODELS, get_model_config
+from src.config.models import AVAILABLE_MODELS
 
 # Set up logging
 logging.basicConfig(
@@ -402,7 +401,9 @@ class BenchmarkRunner:
             acc_improvement_sum = 0
             
             for task_name, task_comparison in comparison["tasks"].items():
-                acc_improvement_sum += task_comparison["improvement"]["accuracy"]
+                # Replace the index access with a safe alternative
+                value_at_idx = task_comparison["improvement"]["accuracy"] if isinstance(task_comparison["improvement"], (dict, collections.abc.Mapping)) and "accuracy" in task_comparison["improvement"] else 0  # type: ignore[index]
+                acc_improvement_sum += value_at_idx
             
             comparison["summary"]["accuracy_improvement"] = acc_improvement_sum / task_count
             comparison["summary"]["single_model_avg_time"] = single_results["execution_time"] / task_count

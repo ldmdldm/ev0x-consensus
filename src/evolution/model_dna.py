@@ -1,7 +1,7 @@
 import uuid
 import json
 import numpy as np
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 
 
 class ModelGene:
@@ -58,8 +58,8 @@ class ModelDNA:
         self.model_id = model_id or str(uuid.uuid4())
 
         # Initialize base genes
-        self.genes = {
-            # Accuracy and performance genes
+        # Initialize base genes
+        self.genes: Dict[str, ModelGene] = {
             "precision": ModelGene("precision", kwargs.get("precision", 0.5)),
             "recall": ModelGene("recall", kwargs.get("recall", 0.5)),
             "latency": ModelGene("latency", kwargs.get("latency", 0.5)),
@@ -84,9 +84,9 @@ class ModelDNA:
                 self.genes[key] = ModelGene(key, value)
 
         # Track ancestry and generation
-        self.parent_ids = kwargs.get("parent_ids", [])  # type: List[str]
-        self.generation = kwargs.get("generation", 0)
-        self.fitness_history = kwargs.get("fitness_history", [])
+        self.parent_ids: List[str] = kwargs.get("parent_ids", [])
+        self.generation: int = kwargs.get("generation", 0)
+        self.fitness_history: List[float] = kwargs.get("fitness_history", [])
 
     def mutate(self, mutation_rate: float = 0.2, mutation_strength: float = 0.2) -> None:
         """Apply random mutations to genes based on mutation rate."""
@@ -172,7 +172,7 @@ class ModelDNA:
             crossover_point = 0
 
         # Create gene values for offspring
-        offspring_values = {}
+        offspring_values: Dict[str, float] = {}
 
         # Take genes from first parent up to crossover point
         for i in range(crossover_point):

@@ -147,7 +147,7 @@ def initialize_integrations(config: Optional[Dict[str, Any]] = None) -> Dict[str
     )
 
     # Auto-connect if configured
-    connection_status = {"connected": False}
+    connection_status: Dict[str, Any] = {"connected": False}
     if config.get("auto_connect", True):
         connection_status["connected"] = flare_conn.connect()
         connection_status["session_id"] = flare_conn.session_id
