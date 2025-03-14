@@ -3,7 +3,7 @@ import os
 import asyncio
 import aiohttp
 import json
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Deque
 from aiohttp import ClientTimeout
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -56,13 +56,13 @@ class OpenRouterClient:
 
         self.timeout = ClientTimeout(total=timeout)
         self.models_cache = None
-        self.models_cache_expiry = None
+        self.models_cache_expiry: Optional[datetime] = None
         self.models_cache_duration = timedelta(hours=24)
 
         # Create a semaphore for rate limiting control
         self.semaphore = asyncio.Semaphore(RATE_LIMIT)  # Limit concurrent requests to RATE_LIMIT
         # Track request timestamps for rate limiting
-        self.request_timestamps = deque(maxlen=RATE_LIMIT * 2)
+        self.request_timestamps: Deque[datetime] = deque(maxlen=RATE_LIMIT * 2)
 
     async def _make_request(self, endpoint: str, data: Dict, method: str = "POST") -> Dict:
         """
@@ -79,7 +79,7 @@ class OpenRouterClient:
         # Implement rate limiting with the semaphore
         async with self.semaphore:
             # Check if we need to wait to respect the rate limit
-            now = time.time()
+            now: float = time.time()
             if len(self.request_timestamps) >= RATE_LIMIT:
                 # Calculate how long to wait if we've reached the rate limit
                 oldest_timestamp = self.request_timestamps[0]
@@ -344,7 +344,7 @@ class OpenRouterClient:
                         chunk = json.loads(data)
                         yield chunk
                     except json.JSONDecodeError:
-                        logger.error(f"Failed to parse stream chunk: {data}")
+                        logger.error(f"Failed to parse stream chunk: {data.decode('utf-8')}")
 
     async def generate_with_backup(
         self,
@@ -516,7 +516,7 @@ class OpenRouterClient:
                     json=data
                 ) as response:
                     if response.status == 200:
-                        result = await response.json()
+                        result: Dict[str, Any] = await response.json()
                         if "choices" in result and len(result["choices"]) > 0 and "message" in result["choices"][0]:
                             return {"text": result["choices"][0]["message"]["content"]}
                         else:
@@ -553,7 +553,7 @@ class OpenRouterClient:
                     json=data
                 ) as response:
                     if response.status == 200:
-                        result = await response.json()
+                        result: Dict[str, Any] = await response.json()
                         if "choices" in result and len(result["choices"]) > 0 and "message" in result["choices"][0]:
                             return {"text": result["choices"][0]["message"]["content"]}
                         else:

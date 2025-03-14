@@ -104,7 +104,7 @@ class TEEVerifier:
         """
         self.project_id = project_id
         self._instance_id = instance_id
-        self._cpu_technology = None
+        self._cpu_technology: Optional[CPUTechnology] = None
 
     @property
     def instance_id(self) -> str:
@@ -116,8 +116,9 @@ class TEEVerifier:
     @property
     def cpu_technology(self) -> CPUTechnology:
         """Get the CPU technology being used by the Confidential VM."""
-        if not self._cpu_technology:
+        if self._cpu_technology is None:
             self._cpu_technology = self._detect_cpu_technology()
+        assert self._cpu_technology is not None  # for type checker
         return self._cpu_technology
 
     def _detect_instance_id(self) -> str:
@@ -373,7 +374,7 @@ class SecureKeyManager:
             tee_verifier: Optional TEEVerifier instance for attestation verification
         """
         self.tee_verifier = tee_verifier
-        self._keys = {}  # In-memory key storage (would use a secure enclave in production)
+        self._keys: Dict[str, Dict[str, bytes]] = {}  # In-memory key storage (would use a secure enclave in production)
 
     def verify_environment(self) -> bool:
         """

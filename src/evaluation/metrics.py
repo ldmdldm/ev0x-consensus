@@ -1,7 +1,7 @@
 """
 Metrics for evaluating model performance.
 """
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -325,9 +325,9 @@ class PerformanceTracker:
             metadata: Any additional information to store with the metrics
         """
         if timestamp is None:
-            timestamp = datetime.now().isoformat()
+            timestamp: str = datetime.now().isoformat()
 
-        result = {
+        result: Dict[str, Union[str, float, Dict[str, Any]]] = {
             'metrics': metrics,
             'timestamp': timestamp,
         }
@@ -389,7 +389,7 @@ class PerformanceTracker:
         return filtered_history
 
     def compute_statistics(self, metric_name: str, model_id: Optional[str] = None,
-                           task_type: Optional[str] = None) -> Dict[str, float]:
+                           task_type: Optional[str] = None) -> Dict[str, Optional[float]]:
         """
         Compute statistics for a specific metric across historical data.
 
@@ -427,6 +427,33 @@ class PerformanceTracker:
 
         return {
             'count': len(values),
+            'mean': float(np.mean(values)),
+            'median': float(np.median(values)),
+            'min': float(np.min(values)),
+            'max': float(np.max(values)),
+            'std': float(np.std(values))
+        }
+
+    def get_statistical_metrics(self, values: List[float]) -> Dict[str, Optional[float]]:
+        """
+        Calculate statistical metrics for a list of values.
+
+        Args:
+            values: List of numeric values to analyze
+
+        Returns:
+            Dictionary of statistical metrics (mean, median, min, max, std)
+        """
+        if not values:
+            return {
+                'mean': None,
+                'median': None,
+                'min': None,
+                'max': None,
+                'std': None
+            }
+
+        return {
             'mean': float(np.mean(values)),
             'median': float(np.median(values)),
             'min': float(np.min(values)),

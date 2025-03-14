@@ -29,8 +29,8 @@ class ModelConfig:
     version: str
     endpoint: str
     api_key_env_var: str
-    parameters: Dict[str, Any] = None
-    capabilities: List[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    capabilities: Optional[List[str]] = None
     enabled: bool = True
 
     def to_dict(self):

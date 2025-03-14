@@ -4,7 +4,7 @@ Model Runner for executing multiple AI models simultaneously.
 import asyncio
 import logging
 import traceback
-from typing import Dict, List, Any, Callable, Optional, TypeVar, Protocol
+from typing import Dict, List, Any, Callable, Optional, TypeVar, Protocol, Union
 
 
 # Configure logging
@@ -19,6 +19,10 @@ class ModelProtocol(Protocol):
 
 
 T = TypeVar('T')
+
+# Type alias definitions
+ModelResponse = Dict[str, Any]
+ModelID = Union[str, List[str]]
 
 
 class ModelRunner:
@@ -114,9 +118,9 @@ class ModelRunner:
             }
 
     async def run_models(self,
-                         input_data: Any,
-                         model_ids: Optional[List[str]] = None,
-                         timeout: float = 30.0) -> Dict[str, Any]:
+                         model_ids: List[str],
+                         prompt: str,
+                         **kwargs: Any) -> Dict[str, Any]:
         """
         Run multiple models in parallel.
 
@@ -127,10 +131,7 @@ class ModelRunner:
         Returns:
             Dictionary mapping model IDs to their outputs
         """
-        if model_ids is None:
-            model_ids = list(self.models.keys())
-
-        tasks = [self._execute_model(model_id, input_data, timeout=timeout)
+        tasks = [self._execute_model(model_id, prompt, **kwargs)
                  for model_id in model_ids if model_id in self.models]
 
         results = await asyncio.gather(*tasks)
@@ -263,8 +264,8 @@ class ModelRunner:
 
     async def generate_completion(self,
                                   prompt: str,
-                                  model_id: str = None,
-                                  model: str = None,
+                                  model_id: Optional[str] = None,
+                                  model: Optional[str] = None,
                                   max_tokens: int = 1000,
                                   temperature: float = 0.7,
                                   timeout: float = 30.0,
@@ -342,8 +343,8 @@ class ModelRunner:
 
     async def generate_chat_completion(self,
                                        messages: List[Dict[str, str]],
-                                       model_id: str = None,
-                                       model: str = None,
+                                       model_id: Optional[str] = None,
+                                       model: Optional[str] = None,
                                        max_tokens: int = 1000,
                                        temperature: float = 0.7,
                                        timeout: float = 30.0,
@@ -418,3 +419,60 @@ class ModelRunner:
                 "error": str(e),
                 "traceback": traceback.format_exc()
             }
+
+    async def run_completion(
+        self,
+        prompt: str,
+        model_id: Optional[str] = None,
+        model: Optional[str] = None,
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        """
+        Generate a completion with appropriate type annotations.
+        
+        Args:
+            prompt: The text prompt to generate a completion for
+            model_id: Optional ID of the model to use
+            model: Optional model name to use if model_id not provided
+            **kwargs: Additional parameters to pass to the model
+            
+        Returns:
+            Dictionary containing the generated completion and metadata
+        """
+        return await self.generate_completion(
+            prompt=prompt,
+            model_id=model_id,
+            model=model,
+            **kwargs
+        )
+
+    async def get_model_response(
+        self,
+        prompt: str,
+        model_id: ModelID,
+        **kwargs: Any
+    ) -> ModelResponse:
+        """
+        Get a response from a model or models using Union type annotations.
+        
+        Args:
+            prompt: The text prompt to generate a response for
+            model_id: A single model ID (str) or list of model IDs
+            **kwargs: Additional parameters to pass to the model
+            
+        Returns:
+            Dictionary containing the model response and metadata
+        """
+        if isinstance(model_id, list):
+            return await self.run_models(
+                model_ids=model_id,
+                prompt=prompt,
+                **kwargs
+            )
+        else:
+            return await self.run_completion(
+                prompt=prompt,
+                model_id=model_id,
+                **kwargs
+            )
+

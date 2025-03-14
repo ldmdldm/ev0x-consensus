@@ -1,7 +1,7 @@
 """
 Implementation of Shapley value calculations for model reward allocation.
 """
-from typing import Dict, List, Any, Callable, Set, Tuple
+from typing import Dict, List, Any, Callable, Set, Tuple, Optional, FrozenSet
 import itertools
 import math
 
@@ -106,7 +106,7 @@ class ShapleyCalculator:
     and additional analysis functionality.
     """
 
-    def __init__(self, evaluation_function: Callable[[Set[str]], float] = None):
+    def __init__(self, evaluation_function: Optional[Callable[[Set[str]], float]] = None):
         """
         Initialize the Shapley calculator.
 
@@ -116,11 +116,14 @@ class ShapleyCalculator:
                             calculation methods.
         """
         self.evaluation_function = evaluation_function
-        self.base_calculator = ShapleyValueCalculator(evaluation_function) if evaluation_function else None
-        self.cached_values = {}
+        self.base_calculator = ShapleyValueCalculator(evaluation_function) if evaluation_function is not None else None
+        self.cached_values: Dict[FrozenSet[str], float] = {}
 
-    def calculate_shapley_values(self, model_ids: List[str],
-                                 eval_function: Callable[[Set[str]], float] = None) -> Dict[str, float]:
+    def calculate_shapley_values(
+        self, 
+        model_ids: List[str],
+        eval_function: Optional[Callable[[Set[str]], float]] = None
+    ) -> Dict[str, float]:
         """
         Calculate Shapley values using the base calculator.
 
@@ -131,8 +134,8 @@ class ShapleyCalculator:
         Returns:
             Dictionary mapping model IDs to their Shapley values
         """
-        eval_func = eval_function or self.evaluation_function
-        if not eval_func:
+        eval_func = eval_function if eval_function is not None else self.evaluation_function
+        if eval_func is None:
             raise ValueError("No evaluation function provided")
 
         calculator = self.base_calculator if self.base_calculator else ShapleyValueCalculator(eval_func)
@@ -144,8 +147,11 @@ class ShapleyCalculator:
 
         return shapley_values
 
-    def calculate_for_text_outputs(self, model_outputs: Dict[str, dict],
-                                   reference_output: str = None) -> Dict[str, float]:
+    def calculate_for_text_outputs(
+        self,
+        model_outputs: Dict[str, dict],
+        reference_output: Optional[str] = None
+    ) -> Dict[str, float]:
         """
         Calculate Shapley values for text outputs by comparing them to a reference
         or to each other based on similarity metrics.
@@ -194,8 +200,11 @@ class ShapleyCalculator:
 
         return self.calculate_shapley_values(model_ids, text_evaluation)
 
-    def calculate_for_numerical_outputs(self, model_outputs: Dict[str, float],
-                                        reference_value: float = None) -> Dict[str, float]:
+    def calculate_for_numerical_outputs(
+        self,
+        model_outputs: Dict[str, float],
+        reference_value: Optional[float] = None
+    ) -> Dict[str, float]:
         """
         Calculate Shapley values for numerical outputs by comparing them to a reference
         or determining their contribution to consensus.
@@ -269,9 +278,9 @@ class ShapleyCalculator:
                 return 0.5  # Neutral score for single model
 
             # Count occurrences of each class
-            class_counts = {}
+            # Count occurrences of each class
+            class_counts: Dict[str, int] = {}
             for cls in subset_classes:
-                class_counts[cls] = class_counts.get(cls, 0) + 1
 
             # Find the most common class and its count
             most_common_class = max(class_counts.items(), key=lambda x: x[1])

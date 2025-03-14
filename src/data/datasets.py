@@ -2,7 +2,8 @@
 
 import logging
 import pandas as pd
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TypeVar, Union, Callable
+from pandas import DataFrame
 from abc import ABC, abstractmethod
 from google.cloud import bigquery
 
@@ -14,11 +15,11 @@ class BaseDataset(ABC):
     """Base class for all datasets."""
 
     @abstractmethod
-    def get_data(self, **kwargs):
+    def get_data(self, **kwargs: Any) -> DataFrame:
         """Get data from the dataset."""
 
     @abstractmethod
-    def get_metadata(self):
+    def get_metadata(self) -> Dict[str, Any]:
         """Get metadata about the dataset."""
 
 
@@ -39,7 +40,7 @@ class FTSODataset(BaseDataset):
         self.block_latency_dataset = "public.ftso_block_latency"
         self.anchor_feeds_dataset = "public.ftso_anchor_feeds"
 
-    def get_data(self, limit: int = 1000, offset: int = 0, filters: Optional[Dict] = None) -> pd.DataFrame:
+    def get_data(self, limit: int = 1000, offset: int = 0, filters: Optional[Dict[str, Any]] = None) -> DataFrame:
         """
         Get FTSO data from BigQuery.
 
@@ -76,7 +77,7 @@ class FTSODataset(BaseDataset):
             return self.client.query(query).to_dataframe()
         except Exception as e:
             logger.error(f"Error fetching FTSO data: {e}")
-            return pd.DataFrame()
+            return DataFrame()
 
     def get_metadata(self) -> Dict[str, Any]:
         """Get metadata about the FTSO dataset."""
@@ -147,7 +148,7 @@ class DatasetManager:
             result[name] = dataset.get_metadata()
         return result
 
-    def query_across_datasets(self, query_func) -> Dict[str, pd.DataFrame]:
+    def query_across_datasets(self, query_func: Callable[[BaseDataset], DataFrame]) -> Dict[str, DataFrame]:
         """
         Execute a query function across all datasets.
 
@@ -163,7 +164,7 @@ class DatasetManager:
                 results[name] = query_func(dataset)
             except Exception as e:
                 logger.error(f"Error querying dataset {name}: {e}")
-                results[name] = pd.DataFrame()
+                results[name] = DataFrame()
         return results
 
 
@@ -176,7 +177,7 @@ class TrendsDataset(BaseDataset):
         self.dataset_id = "public.google_trends"
 
     def get_data(self, keyword: Optional[str] = None, date_from: Optional[str] = None,
-                 date_to: Optional[str] = None, limit: int = 1000) -> pd.DataFrame:
+                 date_to: Optional[str] = None, limit: int = 1000) -> DataFrame:
         """
         Get Google Trends data.
 
@@ -210,7 +211,7 @@ class TrendsDataset(BaseDataset):
             return self.client.query(query).to_dataframe()
         except Exception as e:
             logger.error(f"Error fetching Google Trends data: {e}")
-            return pd.DataFrame()
+            return DataFrame()
 
     def get_metadata(self) -> Dict[str, Any]:
         """Get metadata about the Google Trends dataset."""
@@ -240,7 +241,7 @@ class GitHubDataset(BaseDataset):
         self.dataset_id = "public.github_activity"
 
     def get_data(self, repo: Optional[str] = None, event_type: Optional[str] = None,
-                 limit: int = 1000) -> pd.DataFrame:
+                 limit: int = 1000) -> DataFrame:
         """
         Get GitHub activity data.
 
@@ -271,7 +272,7 @@ class GitHubDataset(BaseDataset):
             return self.client.query(query).to_dataframe()
         except Exception as e:
             logger.error(f"Error fetching GitHub data: {e}")
-            return pd.DataFrame()
+            return DataFrame()
 
     def get_metadata(self) -> Dict[str, Any]:
         """Get metadata about the GitHub dataset."""
@@ -332,7 +333,7 @@ class DatasetLoader:
         """
         return self.manager.get_metadata_for_all()
 
-    def query_across_datasets(self, query_func) -> Dict[str, pd.DataFrame]:
+    def query_across_datasets(self, query_func: Callable[[BaseDataset], DataFrame]) -> Dict[str, DataFrame]:
         """
         Execute a query function across all datasets.
 
@@ -344,7 +345,7 @@ class DatasetLoader:
         """
         return self.manager.query_across_datasets(query_func)
 
-    def load_dataset(self, dataset_name: str, **kwargs) -> pd.DataFrame:
+    def load_dataset(self, dataset_name: str, **kwargs: Any) -> DataFrame:
         """
         Load data from a specific dataset with optional parameters.
         This method provides a simplified interface for accessing dataset data.
@@ -360,4 +361,4 @@ class DatasetLoader:
         if dataset:
             return dataset.get_data(**kwargs)
         logger.error(f"Dataset {dataset_name} not found when attempting to load data")
-        return pd.DataFrame()
+        return DataFrame()
