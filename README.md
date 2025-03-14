@@ -4,10 +4,6 @@
 
 Ev0x implements a novel consensus mechanism for large language models (LLMs) called **Evolutionary Model Consensus (EMC)**. This project extends the theoretical foundations of Consensus Learning (CL) introduced in [arXiv:2402.16157](https://arxiv.org/abs/2402.16157) and adapts it specifically for LLMs. Our approach synthesizes outputs from multiple independent models, iteratively refining responses through an evolutionary feedback loop to achieve higher accuracy, reduced hallucinations, and improved factuality compared to individual model outputs. This research addresses a critical challenge in the Flare AI Consensus hackathon: creating verifiable, trustworthy AI systems with built-in fact verification mechanisms.
 
-# ev0x: Evolutionary Model Consensus Mechanism
-
-![ev0x Logo](docs/images/logo.png)
-
 ## Overview
 
 ev0x is a self-adapting AI system that runs multiple models simultaneously, compares their outputs, and evolves to improve decision making through consensus. It implements a novel approach to AI model orchestration where multiple models compete, collaborate, and evolve to provide more reliable, accurate, and unbiased results than any single model could achieve.
