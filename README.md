@@ -6,9 +6,9 @@ Ev0x implements a novel consensus mechanism for large language models (LLMs) cal
 
 ## Overview
 
-ev0x is a self-adapting AI system that runs multiple models simultaneously, compares their outputs, and evolves to improve decision making through consensus. It implements a novel approach to AI model orchestration where multiple models compete, collaborate, and evolve to provide more reliable, accurate, and unbiased results than any single model could achieve.
+ev0x is a self-adapting AI system that runs multiple models simultaneously, compares their outputs, and evolves to improve decision making through consensus. It implements a novel approach to AI model orchestration where multiple models compete, collaborate, and evolve to provide more reliable, accurate and unbiased results than any single model could achieve.
 
-The system continuously evaluates model performance, distributes rewards using Shapley values, and adapts its weighting mechanisms to optimize for accuracy and diversity of thought.
+The system continuously evaluates model performance, distributes rewards using Shapley values and adapts its weighting mechanisms to optimize for accuracy and diversity of thought.
 
 This comprehensive evolutionary AI system creates a "Model DNA" profile for each AI model, tracks its performance evolution over time, and uses genetic algorithm principles to evolve the model population:
 - Models with strong performance "reproduce" by creating variants
